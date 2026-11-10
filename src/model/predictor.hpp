@@ -1,7 +1,8 @@
-// The probability convention shared by the coder and every model.
-// (The Predictor concept itself arrives with the first model.)
+// The Predictor concept and the probability convention shared by the coder
+// and every model.
 #pragma once
 
+#include <concepts>
 #include <cstdint>
 
 namespace cpress::model {
@@ -14,5 +15,26 @@ namespace cpress::model {
 inline constexpr int kProbBits = 12;
 inline constexpr std::uint32_t kProbMax = 4095;
 inline constexpr std::uint32_t kProbMin = 1;
+
+// A model that predicts a stream of bits one at a time.
+//
+//   predict()    P(next bit = 1) as a p12 in [kProbMin, kProbMax].
+//   update(bit)  learns the bit that was actually coded.
+//
+// The contract, which the concept cannot express:
+//   - predict() then update(bit) are called strictly alternately, once per
+//     bit, so a model may keep state between them.
+//   - predict() depends only on the bits passed to earlier update() calls.
+//     This is what lets the decoder, which has not seen the bit yet, rebuild
+//     the encoder's predictions exactly.
+//   - A default-constructed predictor is in its initial state. Two fresh
+//     predictors fed the same bits produce the same predictions on every
+//     platform, so models use integer arithmetic only.
+//   - Both calls are noexcept and allocation-free: they run once per bit.
+template <typename P>
+concept Predictor = std::default_initializable<P> && requires(P& p, int bit) {
+    { p.predict() } noexcept -> std::same_as<std::uint32_t>;
+    { p.update(bit) } noexcept -> std::same_as<void>;
+};
 
 }  // namespace cpress::model

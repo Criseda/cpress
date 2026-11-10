@@ -39,6 +39,7 @@ bool throws_error(F&& f) {
 // Test groups, run in this order by main(). `files` are extra command-line
 // arguments: paths to round-trip through every codec.
 void run_coder_tests();
+void run_order0_tests();
 void run_roundtrip_tests(std::span<const char* const> files);
 
 }  // namespace cpress::test
