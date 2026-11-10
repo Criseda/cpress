@@ -133,17 +133,23 @@ void test_corruption() {
             return throws_error([&] { (void)cpress::decompress(copy); });
         };
 
-        // Inverts every bit of the byte at `index`.
-        auto flip = [](std::size_t index) {
-            return [index](cpress::Bytes& a) { a[index] = static_cast<std::uint8_t>(~a[index]); };
+        // Mutations use at(): a mistake in an offset fails loudly instead of
+        // writing out of bounds.
+        auto flip = [](std::size_t index) {  // inverts every bit of one byte
+            return [index](cpress::Bytes& a) {
+                a.at(index) = static_cast<std::uint8_t>(~a.at(index));
+            };
+        };
+        auto set = [](std::size_t index, std::uint8_t value) {
+            return [index, value](cpress::Bytes& a) { a.at(index) = value; };
         };
 
         CHECK(throws_error([] { (void)cpress::decompress(cpress::Bytes{}); }));
         CHECK(damaged([](cpress::Bytes& a) { a.resize(10); }));    // short header
         CHECK(damaged(flip(0)));                                   // magic
-        CHECK(damaged([](cpress::Bytes& a) { a[4] = 2; }));        // version
-        CHECK(damaged([](cpress::Bytes& a) { a[5] = 0xFF; }));     // codec id
-        CHECK(damaged([](cpress::Bytes& a) { a[6] = 1; }));        // reserved
+        CHECK(damaged(set(4, 2)));                                 // version
+        CHECK(damaged(set(5, 0xFF)));                              // codec id
+        CHECK(damaged(set(6, 1)));                                 // reserved
         CHECK(damaged(flip(8)));                                   // original size
         CHECK(damaged(flip(16)));                                  // checksum
         CHECK(damaged(flip(cpress::kHeaderSize)));                 // payload
