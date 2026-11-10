@@ -70,4 +70,4 @@ add_executable(cpress-tests tests/main.cpp tests/coder_test.cpp tests/order0_tes
     tests/roundtrip.cpp)
 target_include_directories(cpress-tests PRIVATE src)
 target_link_libraries(cpress-tests PRIVATE cpress_core cpress_warnings)
-add_test(NAME roundtrip COMMAND cpress-tests)
+add_test(NAME cpress-tests COMMAND cpress-tests)

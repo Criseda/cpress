@@ -9,3 +9,7 @@ corpus/*
 
 # Archives produced while experimenting.
 *.cpz
+
+# The local benchmark log. Left untracked, it would make cpress-bench tag
+# every run after the first as "-dirty".
+bench-results.csv

@@ -20,6 +20,10 @@
 
 namespace cpress::coder {
 
+// The coder's state is 32 bits wide. finish() writes this many bytes, and the
+// decoder always holds this many that it has read but not yet used up.
+inline constexpr std::size_t kCodeBytes = 4;
+
 namespace detail {
 
 inline constexpr std::uint32_t kTopByteMask = 0xFF000000u;
@@ -94,10 +98,10 @@ private:
 
 class Decoder {
 public:
-    // Reads the first four payload bytes. The payload must outlive the
+    // Reads the first kCodeBytes payload bytes. The payload must outlive the
     // decoder.
     explicit Decoder(ByteView payload) noexcept : payload_(payload) {
-        for (int i = 0; i < 4; ++i) {
+        for (std::size_t i = 0; i < kCodeBytes; ++i) {
             code_ = (code_ << 8) | next_byte();
         }
     }

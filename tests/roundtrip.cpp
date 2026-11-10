@@ -168,11 +168,32 @@ void test_decode_bitwise_limits() {
     // (Within the limit a bogus payload is still rejected, by the overrun
     // check, once the decoder runs out of bytes.)
     const cpress::Bytes four_zeros(4, 0);
-    constexpr std::uint64_t kLimit = std::uint64_t{4} * 4096;
+    constexpr std::uint64_t kLimit = std::uint64_t{4} * codec::kMaxExpansion;
     CHECK(!rejects(four_zeros, 0));
     CHECK(!over_limit(four_zeros, kLimit));
     CHECK(over_limit(four_zeros, kLimit + 1));
     CHECK(over_limit(four_zeros, std::numeric_limits<std::uint64_t>::max()));
+
+    // The limit holds for what is left at every byte, not only on entry. A
+    // random payload claiming the most the limit allows passes the entry
+    // check, then spends its bytes far faster than the claim requires and is
+    // rejected within the first few bytes of output.
+    const cpress::Bytes garbage = random_bytes(std::size_t{64} * 1024, 0xB16);
+    cpress::Bytes output;
+    CHECK(throws_error([&] { decode(garbage, garbage.size() * codec::kMaxExpansion, output); }));
+    CHECK(output.size() < codec::kMaxExpansion);
+
+    // Memory follows the payload and the bytes actually decoded, not the
+    // claim. This claim is too modest to be caught early, so the decoder runs
+    // until the payload ends. What was allocated by then is the capped
+    // reserve, or one step of vector growth past the bytes decoded.
+    constexpr std::uint64_t kModestExpansion = 64;
+    static_assert(kModestExpansion > codec::kReserveExpansion);
+    output = {};
+    CHECK(throws_error([&] { decode(garbage, garbage.size() * kModestExpansion, output); }));
+    CHECK(output.size() < garbage.size() * kModestExpansion);
+    CHECK(output.capacity() <=
+          std::max<std::uint64_t>(garbage.size() * codec::kReserveExpansion, output.size() * 2));
 
     // No overrun, even when there is nothing to decode.
     CHECK(rejects({}, 0));
@@ -193,6 +214,39 @@ void test_decode_bitwise_limits() {
     cpress::Bytes truncated = payload;
     truncated.pop_back();
     CHECK(rejects(truncated, data.size()));
+}
+
+// The most confident model the coder allows: every bit is a 1, predicted at
+// kProbMax. No model can expand a payload further.
+struct AlwaysOne {
+    [[nodiscard]] static std::uint32_t predict() noexcept {
+        return model::kProbMax;
+    }
+    static void update(int /*bit*/) noexcept {}
+};
+
+// Codes 1 MiB of `fill` through P and checks that it expands by more than
+// `least_expansion`, stays under kMaxExpansion, and still decodes.
+template <model::Predictor P>
+void check_extreme_expansion(std::uint8_t fill, std::uint64_t least_expansion) {
+    const cpress::Bytes data(std::size_t{1024} * 1024, fill);
+    cpress::Bytes payload;
+    codec::encode_bitwise<P>(data, payload);
+    CHECK(data.size() > least_expansion * payload.size());
+    CHECK(data.size() < codec::kMaxExpansion * payload.size());
+
+    cpress::Bytes decoded;
+    CHECK(!throws_error([&] { codec::decode_bitwise<P>(payload, data.size(), decoded); }));
+    CHECK(decoded == data);
+}
+
+// kMaxExpansion must sit above the greatest expansion a valid payload can
+// reach, or decode_bitwise would reject real archives. All-ones bytes through
+// AlwaysOne are that extreme; all-zeros bytes through order0 are the nearest
+// a shipped codec comes to it.
+void test_expansion_ceiling() {
+    check_extreme_expansion<AlwaysOne>(0xFF, 2000);
+    check_extreme_expansion<model::Order0>(0x00, 1000);
 }
 
 // 10,000 random mutations of one valid archive per codec. Each must either be
@@ -333,6 +387,7 @@ void run_roundtrip_tests(std::span<const char* const> files) {
     test_round_trips(samples());
     test_corruption();
     test_decode_bitwise_limits();
+    test_expansion_ceiling();
     test_mutations();
     test_determinism();
     test_compression_happens();

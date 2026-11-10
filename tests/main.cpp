@@ -5,13 +5,17 @@
 //   cpress-tests corpus/enwik8
 #include "check.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <iostream>
 #include <span>
 
 int main(int argc, char** argv) {
     using namespace cpress::test;
 
-    const std::span<const char* const> files(argv + 1, static_cast<std::size_t>(argc - 1));
+    // argc can be 0: the standard does not promise a program name.
+    const std::span<const char* const> arguments(argv, static_cast<std::size_t>(argc));
+    const auto files = arguments.subspan(std::min<std::size_t>(arguments.size(), 1));
     run_coder_tests();
     run_order0_tests();
     run_roundtrip_tests(files);

@@ -54,10 +54,12 @@ void test_entries_stay_in_range() {
         }
         CHECK(in_range);
         const auto entries = model.entries();
-        // Entry 0 is unused; the rest must be inside the documented bounds.
+        // Entry 0 is unused. A constant stream drives the entries it visits
+        // all the way to one bound, and must leave the rest inside both.
         const auto [low, high] = std::minmax_element(entries.begin() + 1, entries.end());
-        CHECK(*low >= 15);
-        CHECK(*high <= 65521);
+        CHECK(*low >= Order0::kEntryMin);
+        CHECK(*high <= Order0::kEntryMax);
+        CHECK(bit != 0 ? *high == Order0::kEntryMax : *low == Order0::kEntryMin);
         // Contexts the all-ones or all-zeros stream never visits stay untouched.
         CHECK(std::count(entries.begin(), entries.end(), Order0::kP16Half) > 200);
     }

@@ -9,13 +9,15 @@
 //
 // Update rule: each entry is P(1) in 16 bits (`p16`) and moves a fixed
 // fraction of the way towards the bit just seen, an exponentially weighted
-// moving average: p += (target - p) >> kRate. This is the simple adaptive
-// bit model of Mahoney's fpaq0.
+// moving average: p += (target - p) >> kRate.
+//
+// Technique: the context is that of Matt Mahoney's fpaq0, which keeps a pair
+// of bit counts in each one. Keeping a probability instead, and moving it by
+// 1/32 of the error, is Ilia Muraviev's fpaq0p.
 #pragma once
 
 #include "model/predictor.hpp"
 
-#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -33,20 +35,24 @@ public:
     // Bounds on a table entry. Entries start at kP16Half and only move by
     // (distance >> kRate), which is zero once the distance is below 2^kRate,
     // so an entry stops short of both ends: it never falls below
-    // 2^kRate - 1 or rises above 65536 - (2^kRate - 1). That is [31, 65505]
-    // for kRate 5, and within [15, 65521] for kRate 4 or 5. Both fit in 16
-    // bits; 65536 itself would not.
+    // kEntryMin or rises above kEntryMax: [31, 65505] for a kRate of 5. Both
+    // fit in 16 bits; kP16One itself would not.
     static constexpr int kP16Bits = 16;
     static constexpr std::uint32_t kP16One = 1U << kP16Bits;  // probability 1.0, never stored
     static constexpr std::uint32_t kP16Half = kP16One / 2;
     static constexpr std::uint32_t kEntryMin = (1U << kRate) - 1;
     static constexpr std::uint32_t kEntryMax = kP16One - kEntryMin;
 
-    // p12 in [1, 4095]. The shift turns 16 bits into 12. The smallest
-    // entry shifts to 0, so clamp: a probability of zero is not allowed.
+    // A prediction is an entry with its low bits dropped. The entry bounds
+    // must keep that inside [kProbMin, kProbMax]; a kRate for which they do
+    // not (4 lets an entry reach 15, which shifts to 0) fails to compile.
+    static constexpr int kP16ToP12Shift = kP16Bits - kProbBits;
+    static_assert((kEntryMin >> kP16ToP12Shift) >= kProbMin, "kRate lets a prediction reach 0");
+    static_assert((kEntryMax >> kP16ToP12Shift) <= kProbMax, "kRate lets a prediction reach 1");
+
+    // p12 in [kProbMin, kProbMax], with no clamp: see the assertions above.
     [[nodiscard]] std::uint32_t predict() const noexcept {
-        return std::clamp<std::uint32_t>(table_[context_] >> (kP16Bits - kProbBits), kProbMin,
-                                         kProbMax);
+        return std::uint32_t{table_[context_]} >> kP16ToP12Shift;
     }
 
     void update(int bit) noexcept {

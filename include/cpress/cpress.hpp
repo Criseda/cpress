@@ -11,6 +11,15 @@
 //   8       8     original size in bytes
 //   16      4     CRC-32 of the original data
 //   20      ...   payload
+//
+// The codec id selects how the payload is read:
+//
+//   id  name    payload
+//   0   stored  The original bytes.
+//   1   order0  Arithmetic-coded bits, each byte most significant bit first,
+//               then the coder's 4 flush bytes. The payload must be consumed
+//               exactly, and the original size may not exceed 4096 times the
+//               payload size. Experimental until v0.1 is tagged.
 #pragma once
 
 #include <array>
