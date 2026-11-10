@@ -1,0 +1,4 @@
+# Tests keep their pass/fail counters in two file-local globals.
+InheritParentConfig: true
+Checks: >
+  -cppcoreguidelines-avoid-non-const-global-variables
