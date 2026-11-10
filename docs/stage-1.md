@@ -174,14 +174,24 @@ the two directions exist; model code is written once.
    before decoding. Each coded bit shrinks the interval by at least a factor
    of 4095/4096, so one payload byte can yield at most about 2,840 output
    bytes; 4096 is a safe ceiling. This bounds both work and memory by the
-   size of the input.
+   size of the input. *Amended in review:* the same bound is also checked
+   after every byte, for the output still to come against the payload still
+   to be read plus the four bytes the decoder holds. A random 16 MiB payload
+   claiming 64 GiB was taking 13 seconds to reject, because random bytes
+   decode as if compressed about 21 times and the decoder produced 336 MiB
+   before the payload ran out; it is now rejected within a few bytes. A
+   claim well under the ceiling still costs a decode of what the payload
+   yields: nothing in this format tells damage from data before the end.
 2. **No overrun.** If the decoder's `overrun` flag is set, the archive is
    corrupt. Check it once per byte, outside the bit loop, and stop early.
 3. **Exact consumption.** After the last byte, `consumed()` must equal
    `payload.size()`. Otherwise the archive is corrupt. Without this check an
    appended byte would go unnoticed.
-4. **No trust in `original_size` for allocation.** Reserve at most the
-   bounded figure from rule 1, and prefer letting the vector grow.
+4. **No trust in `original_size` for allocation.** Reserve at most 8 times
+   the payload size (`kReserveExpansion`) and let the vector grow beyond
+   that. *Amended in review:* this rule first allowed reserving the bounded
+   figure from rule 1, which let a 16 MiB archive claim 64 GiB and fail with
+   `std::bad_alloc` instead of `cpress::Error`.
 
 Failures throw `cpress::Error` from the driver, never from inside the coder.
 The container then checks the decoded size and CRC-32 as it already does.
@@ -197,7 +207,7 @@ It ranges over 1 to 255, so the model is one table of 256 entries.
 Each entry is P(1) in **16 bits**, starting at 32768.
 
 ```
-predict:  p12 = clamp(table[ctx] >> 4, 1, 4095)
+predict:  p12 = table[ctx] >> 4
 update:   if bit: table[ctx] += (65536 - table[ctx]) >> kRate
           else:   table[ctx] -= table[ctx] >> kRate
           advance ctx
@@ -207,6 +217,16 @@ update:   if bit: table[ctx] += (65536 - table[ctx]) >> kRate
 and report both in the commit message. With either, an entry stays within
 `[15, 65521]`, so it never overflows 16 bits; state that bound in a comment
 and test it.
+
+*Amended in review:* 5 was kept. An entry then stays within `[31, 65505]`
+(`kEntryMin`, `kEntryMax`), which shifts to `[1, 4094]`, so `predict` needs
+no clamp. Two `static_assert`s prove that, and make a `kRate` of 4, where an
+entry can reach 15 and shift to 0, a build error. The brief first specified
+`clamp(table[ctx] >> 4, 1, 4095)`; the predictions are identical.
+
+The update rule is that of Ilia Muraviev's `fpaq0p`. `fpaq0` itself keeps a
+pair of bit counts per context, so its 63.4 MB is a reference point for the
+target, not a figure this model should reproduce.
 
 Mind integer promotion: `std::uint16_t` operands promote to `int`. Every
 store back into the table is a visible `static_cast`.
@@ -240,7 +260,8 @@ Split the test executable into groups run from `tests/main.cpp`.
 
 6. After 10,000 copies of one byte, each of its eight bits is predicted with
    confidence above 4000/4096.
-7. Table entries stay within `[15, 65521]` under all-ones and all-zeros.
+7. Table entries stay within `[kEntryMin, kEntryMax]` under all-ones and
+   all-zeros, and reach the bound they are driven towards.
 8. Two fresh models fed the same bits give identical predictions.
 
 **Codec**
@@ -254,8 +275,12 @@ Split the test executable into groups run from `tests/main.cpp`.
 11. *Determinism:* for the fixed samples in `roundtrip.cpp`, assert the
     CRC-32 of the whole archive against constants recorded once. CI then
     proves MSVC, GCC and Clang produce identical bytes.
-12. *Compression actually happens:* the repetitive-text sample is under half
-    its original size; the random sample grows by less than 1%.
+12. *Compression actually happens:* the repetitive-text sample is under 60%
+    of its original size and within 5% of its byte-histogram entropy; the
+    random sample grows by less than 1.5%. *Amended in review:* the brief
+    first asked for under half and under 1%, which no order-0 model can
+    meet. The byte entropy of that text is 55% of its size, and adaptation
+    noise at a shift of 5 costs about 1.2% on random data.
 
 ## Exit criteria
 
