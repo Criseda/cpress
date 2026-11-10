@@ -1,4 +1,6 @@
+#include "codec/bitwise.hpp"
 #include "cpress/cpress.hpp"
+#include "model/order0.hpp"
 
 namespace cpress {
 namespace {
@@ -19,12 +21,18 @@ void stored_decode(ByteView payload, std::uint64_t original_size, Bytes& output)
 
 // New codecs are added here. Ids are part of the file format: never reuse
 // or renumber one once an archive using it could exist.
-constexpr std::array<Codec, 1> kCodecs{{
+constexpr std::array<Codec, 2> kCodecs{{
     {.id = 0,
      .name = "stored",
      .summary = "no compression (stage 0 placeholder)",
      .encode = &stored_encode,
      .decode = &stored_decode},
+    // Codec 1: order-0 bitwise model. Experimental until stage 1 is tagged.
+    {.id = 1,
+     .name = "order0",
+     .summary = "order-0 bitwise model",
+     .encode = &codec::encode_bitwise<model::Order0>,
+     .decode = &codec::decode_bitwise<model::Order0>},
 }};
 
 }  // namespace

@@ -28,13 +28,14 @@ class Order0 {
 public:
     // Adaptation shift: each update moves an entry 1/2^kRate of the way to
     // its target. Larger is slower to adapt and more precise at rest.
-    static constexpr int kRate = 4;
+    static constexpr int kRate = 5;
 
     // Bounds on a table entry. Entries start at kP16Half and only move by
     // (distance >> kRate), which is zero once the distance is below 2^kRate,
     // so an entry stops short of both ends: it never falls below
-    // 2^kRate - 1 (15 for kRate 4) or rises above 65536 - (2^kRate - 1)
-    // (65521). Both fit in 16 bits; 65536 itself would not.
+    // 2^kRate - 1 or rises above 65536 - (2^kRate - 1). That is [31, 65505]
+    // for kRate 5, and within [15, 65521] for kRate 4 or 5. Both fit in 16
+    // bits; 65536 itself would not.
     static constexpr int kP16Bits = 16;
     static constexpr std::uint32_t kP16One = 1U << kP16Bits;  // probability 1.0, never stored
     static constexpr std::uint32_t kP16Half = kP16One / 2;
