@@ -1,0 +1,11 @@
+build/
+out/
+.vs/
+CMakeUserPresets.json
+
+# Corpus files are large; only the notes are tracked.
+corpus/*
+!corpus/README.md
+
+# Archives produced while experimenting.
+*.cpz

@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-msvc
+            os: windows-latest
+          - name: linux-gcc
+            os: ubuntu-latest
+            cxx: g++
+          - name: linux-clang
+            os: ubuntu-latest
+            cxx: clang++
+          - name: linux-sanitizers
+            os: ubuntu-latest
+            cxx: clang++
+            flags: -DCPRESS_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
+          - name: macos-clang
+            os: macos-latest
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ -n "${{ matrix.cxx }}" ]; then export CXX="${{ matrix.cxx }}"; fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCPRESS_WERROR=ON ${{ matrix.flags }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
