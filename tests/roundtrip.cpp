@@ -1,9 +1,7 @@
-// cpress tests: checksum vectors, round trips for every codec, and rejection
-// of corrupted archives. No framework: a failed CHECK is counted and reported,
-// and the process exits non-zero if any failed.
-//
-// Extra arguments are treated as files to round-trip through every codec:
-//   cpress-tests corpus/enwik8
+// Container-level tests: checksum vectors, round trips for every codec, and
+// rejection of corrupted archives.
+#include "check.hpp"
+
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
 
@@ -16,29 +14,8 @@
 #include <utility>
 #include <vector>
 
+namespace cpress::test {
 namespace {
-
-int g_checks = 0;
-int g_failures = 0;
-
-#define CHECK(condition)                                                                          \
-    do {                                                                                          \
-        ++g_checks;                                                                               \
-        if (!(condition)) {                                                                       \
-            ++g_failures;                                                                         \
-            std::cerr << __FILE__ << ":" << __LINE__ << ": CHECK failed: " << #condition << "\n"; \
-        }                                                                                         \
-    } while (false)
-
-template <typename F>
-bool throws_error(F&& f) {
-    try {
-        std::forward<F>(f)();
-    } catch (const cpress::Error&) {
-        return true;
-    }
-    return false;
-}
 
 cpress::Bytes bytes_of(std::string_view text) {
     return {text.begin(), text.end()};
@@ -160,23 +137,22 @@ void test_corruption() {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+void run_roundtrip_tests(std::span<const char* const> files) {
     test_crc32();
     test_codec_registry();
     test_round_trips(samples());
     test_corruption();
 
     try {
-        std::vector<Sample> files;
-        for (int i = 1; i < argc; ++i) {
-            files.push_back({argv[i], cpress::read_file(argv[i])});
+        std::vector<Sample> loaded;
+        for (const char* path : files) {
+            loaded.push_back({path, cpress::read_file(path)});
         }
-        test_round_trips(files);
+        test_round_trips(loaded);
     } catch (const std::exception& e) {
         ++g_failures;
         std::cerr << "file round trip failed: " << e.what() << "\n";
     }
-
-    std::cout << g_checks << " checks, " << g_failures << " failed\n";
-    return g_failures == 0 ? 0 : 1;
 }
+
+}  // namespace cpress::test
