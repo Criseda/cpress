@@ -52,12 +52,14 @@ run to run on this machine.
 
 | Codec | Commit | Size (bytes) | Bits/byte | Compress ns/B | Decompress ns/B | Peak MiB |
 |---|---|---|---|---|---|---|
-| `order0` | `403ed8e` | 61,263,585 | 4.901 | 38.3 | 61.2 | 254.5 |
-| `order0`, adaptation shift 4 | experiment on `403ed8e`, not committed | 61,947,984 | 4.956 | 36.2 | 61.8 | 255.2 |
+| `order0` | `1aea9b1` | 61,263,585 | 4.901 | 31.0 | 45.5 | 254.4 |
+| `order0`, adaptation shift 4 | experiment, not committed | 61,947,984 | 4.956 | – | – | – |
 
 The first row is the codec as shipped, with an adaptation shift of 5. The
-second is the alternative the stage brief asked to be measured, and is not
-buildable from any commit: the model now rejects a shift of 4 at compile time.
+second is the alternative the stage brief asked to be measured. It was built
+once from `403ed8e` with the shift changed, and its timings matched shift 5
+within noise. It cannot be built from the current tree: the model rejects a
+shift of 4 at compile time.
 
 Peak memory is dominated by the benchmark holding the input, the archive and
 the restored copy at once; the model itself is 512 bytes. The stage 1 target
