@@ -2,12 +2,14 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 2 done, tagged `v0.2`; stage 3 is next.** The container
-format, command-line tool, tests and benchmark runner work end to end. There
-are three codecs: `stored`, which does not compress; `order0`, a binary
-arithmetic coder driven by an order-0 bitwise model; and `mix6`, the
-default, which drives the same coder with six hashed context models, orders
-1 to 6, combined by a logistic mixer.
+**Status: stage 2 done, tagged `v0.2`; stage 3 implemented, not yet tagged.**
+The container format, command-line tool, tests and benchmark runner work end
+to end. There are four codecs: `stored`, which does not compress; `order0`, a
+binary arithmetic coder driven by an order-0 bitwise model; `mix6`, which
+drives the same coder with six hashed context models, orders 1 to 6,
+combined by a logistic mixer; and `mix9`, the default, which keeps a bit
+history in each context, adds a match model and two word contexts, and
+refines the mix with two adaptive probability maps.
 
 ## Build
 
@@ -35,9 +37,9 @@ cpress codecs
 
 `cpress` never overwrites an existing file unless you pass `-f`.
 
-`mix6` sizes its model to the input: about 190 KiB for a file of a kilobyte,
-640 MiB for anything over 2 MiB. Decompression needs the same memory as
-compression did.
+`mix9` sizes its model to the input: about 4.3 MiB for a file of a kilobyte,
+980 MiB for anything over 4 MiB. (`mix6` needs 190 KiB to 640 MiB.)
+Decompression needs the same memory as compression did.
 
 ## Benchmark
 
@@ -58,15 +60,42 @@ run to run on this machine.
 
 | Codec | Commit | Size (bytes) | Bits/byte | Compress ns/B | Decompress ns/B | Peak MiB |
 |---|---|---|---|---|---|---|
+| `mix9` | `9362c80` | 19,687,838 | 1.575 | 778.9 | 825.7 | 1194.2 |
+| `mix9`, `kMaxLevel` 22 | experiment, not committed | 19,849,694 | 1.588 | – | – | – |
+| `mix9`, no match model | experiment, not committed | 20,323,230 | 1.626 | – | – | – |
 | `mix6` | `v0.2` | 22,527,170 | 1.802 | 381.5 | 402.5 | 856.8 |
 | `mix6`, levels capped at 20 | experiment, not committed | 23,459,891 | 1.877 | – | – | – |
 | `mix6`, one weight set | experiment, not committed | 22,864,484 | 1.829 | – | – | – |
 | `order0` | `v0.1` | 61,263,585 | 4.901 | 31.0 | 45.5 | 254.4 |
 | `order0`, adaptation shift 4 | experiment, not committed | 61,947,984 | 4.956 | – | – | – |
 
-The shipped rows were measured at `0eb8c7d` and `1aea9b1`, on the `stage-2`
-and `stage-1` branches, before each stage was merged. Their model and coder
-code is identical to the tagged code, which makes the same archives.
+The `mix9` row was measured at `9362c80` on the `stage-3` branch, before
+the stage was merged or tagged; `mix9` is experimental until `v0.3`. The
+other shipped rows were measured at `0eb8c7d` and `1aea9b1`, on the
+`stage-2` and `stage-1` branches, before each stage was merged. Their model
+and coder code is identical to the tagged code, which makes the same
+archives.
+
+`mix9` is the stage 3 codec; its target was 20 MB or better. The prototype
+in its brief measured 19,687,808 bytes of ideal code length; the archive
+is 30 bytes more, 25 of them the header, level byte and coder flush. It
+runs at level 23 on this file, so 980.4 MiB of its peak memory is the
+model. It takes about twice as long per byte as `mix6`, as the brief
+expected.
+
+The two `mix9` experiments are the ones the stage brief asked for, each
+built once from `63af883` with one thing changed. `9362c80` then capped
+order 2's table, which changes no prediction, so both results stand.
+
+- `kMaxLevel` lowered from 23 to 22. The model shrinks to 524.4 MiB, about
+  half, and the archive grows by 0.8%.
+- No match model: its input held at 0, and the mixer's weight set chosen by
+  the previous byte alone. The archive grows by 3.2%.
+
+They were built with GCC 13 on Linux (WSL 2, same machine). That build
+makes the same archive from the shipped codec as MSVC does, all 19,687,838
+bytes of it, at 753 / 753 ns per byte; the experiments ran at 715 / 748
+and 776 / 797.
 
 `mix6` is the stage 2 codec, as shipped; its target was under 25 MB. It runs
 at level 22 on this file, so 640.5 MiB of its peak memory is the model's
@@ -117,8 +146,9 @@ match the header.
 | 0 | `stored` | The original bytes |
 | 1 | `order0` | Arithmetic-coded bits, then 4 flush bytes (frozen at `v0.1`) |
 | 2 | `mix6` | One byte, the model's memory level; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.2`) |
+| 3 | `mix9` | As `mix6`, with a level of 10 to 23 (experimental until `v0.3`) |
 
-`order0` and `mix6` code each byte most significant bit first. Every bit is
+`order0`, `mix6` and `mix9` code each byte most significant bit first. Every bit is
 coded with a 12-bit probability P(bit = 1) from the model, by a carryless
 32-bit binary arithmetic coder. The coded part of the payload is exactly the
 coder's output; the decoder must consume it exactly, and the header's
@@ -130,6 +160,12 @@ the model's larger tables has 2^level slots of 32 bytes, which comes to
 picks the smallest level with 2^level at least the input size. The
 decompressor allocates what the archive's level calls for, so the level can
 be chosen differently later without a format change.
+
+The level byte of `mix9` is 10 to 23, chosen and checked by the same rules.
+Each of its eight history tables has 2^level slots of 16 bytes, except that
+orders 1 and 2 never have more than 2^14 and 2^22. Its match model has a
+buffer of 2^level × 16 bytes. With fixed tables of 4.2 MiB that comes to
+4.3 MiB at level 10 and 980.4 MiB at level 23.
 
 ## Layout
 
@@ -176,4 +212,5 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/roadmap.md](docs/roadmap.md) | Every stage in detail, with exit criteria |
 | [docs/stage-1.md](docs/stage-1.md) | The brief for stage 1 |
 | [docs/stage-2.md](docs/stage-2.md) | The brief for stage 2 |
+| [docs/stage-3.md](docs/stage-3.md) | The brief for stage 3 |
 | [docs/style.md](docs/style.md) | Code style and review checklist |

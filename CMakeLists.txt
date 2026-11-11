@@ -68,15 +68,21 @@ endif()
 enable_testing()
 add_executable(cpress-tests
     tests/main.cpp
+    tests/apm_test.cpp
     tests/coder_test.cpp
     tests/context_table_test.cpp
     tests/counter_test.cpp
     tests/golden_test.cpp
+    tests/history_table_test.cpp
     tests/logistic_test.cpp
+    tests/match_model_test.cpp
     tests/mix6_test.cpp
+    tests/mix9_test.cpp
     tests/mixer_test.cpp
     tests/order0_test.cpp
-    tests/roundtrip.cpp)
+    tests/probability_map_test.cpp
+    tests/roundtrip.cpp
+    tests/state_table_test.cpp)
 target_include_directories(cpress-tests PRIVATE src)
 target_link_libraries(cpress-tests PRIVATE cpress_core cpress_warnings)
 add_test(NAME cpress-tests COMMAND cpress-tests)
