@@ -22,7 +22,7 @@ the current stage before implementing anything. Both are binding.
 
 ## Where things stand
 
-Stage 0 is done. Stage 1 is next; its brief is `docs/stage-1.md`.
+Stages 0 and 1 are done. Stage 2 is next; its brief is `docs/stage-2.md`.
 Update this line and the README roadmap when a stage is tagged.
 Stage targets are sizes on `corpus/enwik8` (100 MB); see `corpus/README.md`.
 

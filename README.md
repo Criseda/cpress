@@ -2,7 +2,7 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 1 (awaiting review).** The container format, command-line
+**Status: stage 1 done, stage 2 in progress.** The container format, command-line
 tool, tests and benchmark runner work end to end. There are two codecs:
 `stored`, which does not compress, and `order0`, the default: a binary
 arithmetic coder driven by an order-0 bitwise model.
@@ -125,7 +125,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | Stage | Goal | Target on enwik8 (100 MB) |
 |---|---|---|
 | 0 | Harness: container, CLI, tests, benchmark | done |
-| 1 | Binary arithmetic coder + order-0 model | 64 MB or better (61.3 MB, awaiting review) |
+| 1 | Binary arithmetic coder + order-0 model | done: 61.3 MB (target 64 MB or better) |
 | 2 | Hashed order 1–6 models + logistic mixer | under 25 MB |
 | 3 | Bit-history states, probability maps, match model | 20 MB or better |
 | 4 | Cache-aware tables, prefetching, SIMD mixer | same size at 870 ns/byte or better |
@@ -138,5 +138,6 @@ The full conventions are in [docs/style.md](docs/style.md).
 |---|---|
 | [docs/idea.md](docs/idea.md) | Why the project exists, how context mixing works, goals and non-goals |
 | [docs/roadmap.md](docs/roadmap.md) | Every stage in detail, with exit criteria |
-| [docs/stage-1.md](docs/stage-1.md) | The brief for the current stage |
+| [docs/stage-1.md](docs/stage-1.md) | The brief for stage 1 |
+| [docs/stage-2.md](docs/stage-2.md) | The brief for the current stage |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
