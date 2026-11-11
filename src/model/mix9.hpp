@@ -27,9 +27,9 @@
 // lengths.
 //
 // Memory: set by the level, kMinLevel to kMaxLevel; see memory_bytes().
-// Each history table has 2^level slots of 16 bytes, except order 1, which
-// has too few contexts to use more than 2^14. The match model's buffer is
-// as large as one history table. The two APMs, the mixer and the maps add
+// Each history table has 2^level slots of 16 bytes, except orders 1 and 2,
+// which have too few contexts to use more than 2^14 and 2^22. The match
+// model's buffer is as large as one history table. The two APMs, the mixer and the maps add
 // a fixed 4.2 MiB, most of it the second APM.
 //
 // Update rule: every map, table, the match model, the mixer's selected
@@ -101,6 +101,21 @@ inline constexpr std::uint64_t kWordKey2 = 0xD6E8FEB86659FD93;   // the bigram t
 
 }  // namespace words
 
+namespace detail {
+
+// Order n has 17 * 256^n keys: a first-nibble slot and sixteen
+// second-nibble slots per context. Twice that, rounded up to a power of
+// two, is all the slots it can use: log2 of that is returned.
+[[nodiscard]] constexpr int order_slot_bits(int order) noexcept {
+    const std::uint64_t keys = std::uint64_t{17} << (8 * order);
+    return std::bit_width((2 * keys) - 1);
+}
+
+static_assert(order_slot_bits(1) == 14);
+static_assert(order_slot_bits(2) == 22);
+
+}  // namespace detail
+
 class Mix9 {
 public:
     // The byte contexts: 1 to kOrders bytes.
@@ -114,6 +129,7 @@ public:
     // The level is log2 of the slots in each history table but order 1's.
     static constexpr int kMinLevel = 10;
     static constexpr int kMaxLevel = 23;
+    static_assert(detail::order_slot_bits(3) > kMaxLevel, "only orders 1 and 2 are capped");
 
     // The smallest level with 2^level >= size, within the two limits: about
     // one slot per input byte in each table.
@@ -130,6 +146,19 @@ public:
     }
     [[nodiscard]] static constexpr int match_hash_bits(int level) noexcept {
         return level - 1;
+    }
+
+    // log2 of the slots in history table `table` (orders 1 to kOrders, then
+    // word and bigram) at `level`: the level, or less for an order with too
+    // few contexts to use that many.
+    //
+    // The order 2 cap, 2^22, binds only at level 23, and changes no
+    // prediction there: at 2^22 slots, as at 2^23, every order 2 key has a
+    // bucket with room for it and a check no other key there shares, so no
+    // slot is ever shared or evicted (mix9_test.cpp checks every key).
+    [[nodiscard]] static constexpr int table_slot_bits(std::size_t table, int level) noexcept {
+        if (table >= kOrderTables) return level;
+        return std::min(level, detail::order_slot_bits(static_cast<int>(table) + 1));
     }
 
     // Bytes a model at `level` allocates: every table, buffer, map and
@@ -219,17 +248,6 @@ private:
     static constexpr std::size_t kOrderTables = static_cast<std::size_t>(kOrders);
     static constexpr std::size_t kWordTable = kOrderTables;
     static constexpr std::size_t kBigramTable = kOrderTables + 1;
-
-    // Order 1 has 17 * 256 keys (a first-nibble slot and sixteen
-    // second-nibble slots per byte); twice that, rounded up to a power of
-    // two, is all the slots it can use.
-    static constexpr int kOrder1SlotBits = std::bit_width((2U * 17 * 256) - 1);
-    static_assert(kOrder1SlotBits == 14);
-
-    // log2 of the slots in history table `table` at `level`.
-    [[nodiscard]] static constexpr int table_slot_bits(std::size_t table, int level) noexcept {
-        return table == 0 ? std::min(level, kOrder1SlotBits) : level;
-    }
 
     template <std::size_t... Index>
     [[nodiscard]] static std::array<HistoryTable, kTables> make_tables(

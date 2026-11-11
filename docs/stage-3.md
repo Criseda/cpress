@@ -233,6 +233,15 @@ state a context is in, the map says what that state predicts here.
 Memory: `2^slot_bits * 16` bytes. Order 1 is capped as in stage 2: no more
 than twice its 17 × 256 keys, rounded up to a power of two, `2^14` slots.
 
+*Amended in implementation:* the same rule caps order 2 at twice its
+17 × 65,536 keys, rounded up, `2^22` slots. It binds only at level 23, and
+saves 64 MiB there. It changes no prediction: at `2^22` slots, as at `2^23`,
+no bucket is asked to hold more than four order-2 keys and no two keys in a
+bucket share a check, so every key keeps a slot of its own and nothing is
+evicted, whatever the input. That rests on the hash, not on the rule, so a
+test checks it for every order-2 key at both sizes. `enwik8` compresses to
+the same archive with the cap as without it.
+
 ## 4. Match model
 
 Long repeats are common in real data: a template, a quoted line, a
@@ -417,10 +426,14 @@ clamped. `enwik8` gets level 23.
 | 16 | 7,602,176 | 1,179,648 | 4,385,152 | 13,166,976 | 12.6 MiB |
 | 20 | 117,702,656 | 18,874,368 | 4,385,152 | 140,962,176 | 134.4 MiB |
 | 22 | 470,024,192 | 75,497,472 | 4,385,152 | 549,906,816 | 524.4 MiB |
-| 23 | 939,786,240 | 150,994,944 | 4,385,152 | 1,095,166,336 | 1,044.4 MiB |
+| 23 | 872,677,376 | 150,994,944 | 4,385,152 | 1,028,057,472 | 980.4 MiB |
+
+*Amended in implementation:* the level 23 row includes order 2's cap
+(section 3). Without it the history tables were 939,786,240 bytes and the
+total 1,095,166,336, 1,044.4 MiB.
 
 `memory_bytes(level)` counts every allocation the model makes: the eight
-history tables (order 1 capped at 2^14 slots), the match model's buffer and
+history tables (order 1 capped at 2^14 slots, order 2 at 2^22), the match model's buffer and
 hash table, the two APMs (16,896 and 4,325,376 bytes), the mixer's weights
 (1,024 × 9 × 4 bytes), the eight state maps (181 × 4 bytes each) and the
 match model's map (56 × 4 bytes). Test it against this table.
@@ -532,7 +545,9 @@ Stage 2 is tagged `v0.2`, so `mix6` and its output are permanent.
     `[kProbMin, kProbMax]`.
 17. Two fresh models at the same level give identical predictions.
 18. `level_for_size` at 0, 1, 1024, 1025, 2^23 and 2^40; `memory_bytes`
-    against the table above.
+    against the table above. *Amended in implementation:* also each
+    table's slot count, and the order-2 check of section 3: every key's
+    bucket and check, at `2^22` and `2^23` slots.
 
 **Codec**
 

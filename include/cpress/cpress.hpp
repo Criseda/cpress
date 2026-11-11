@@ -27,8 +27,8 @@
 //               the level calls for, from 192 KiB at 10 to 640.5 MiB at 22,
 //               whatever the original size. Frozen at v0.2.
 //   3   mix9    As mix6, with a level of 10 to 23. The decoder allocates
-//               what the level calls for, from 4.3 MiB at 10 to 1,044.4 MiB
-//               at 23, whatever the original size. Experimental until v0.3.
+//               what the level calls for, from 4.3 MiB at 10 to 980.4 MiB at
+//               23, whatever the original size. Experimental until v0.3.
 #pragma once
 
 #include <array>

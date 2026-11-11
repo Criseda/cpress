@@ -38,8 +38,8 @@ cpress codecs
 `cpress` never overwrites an existing file unless you pass `-f`.
 
 `mix9` sizes its model to the input: about 4.3 MiB for a file of a kilobyte,
-1,044 MiB for anything over 4 MiB. (`mix6` needs 190 KiB to 640 MiB.) Decompression needs the same memory as
-compression did.
+980 MiB for anything over 4 MiB. (`mix6` needs 190 KiB to 640 MiB.)
+Decompression needs the same memory as compression did.
 
 ## Benchmark
 
@@ -161,9 +161,10 @@ decompressor allocates what the archive's level calls for, so the level can
 be chosen differently later without a format change.
 
 The level byte of `mix9` is 10 to 23, chosen and checked by the same rules.
-Each of its eight history tables but the first has 2^level slots of 16
-bytes, and its match model a buffer of the same size; with fixed tables of
-4.2 MiB that comes to 4.3 MiB at level 10 and 1,044.4 MiB at level 23.
+Each of its eight history tables has 2^level slots of 16 bytes, except that
+orders 1 and 2 never have more than 2^14 and 2^22. Its match model has a
+buffer of 2^level × 16 bytes. With fixed tables of 4.2 MiB that comes to
+4.3 MiB at level 10 and 980.4 MiB at level 23.
 
 ## Layout
 
