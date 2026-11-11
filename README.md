@@ -60,15 +60,41 @@ run to run on this machine.
 
 | Codec | Commit | Size (bytes) | Bits/byte | Compress ns/B | Decompress ns/B | Peak MiB |
 |---|---|---|---|---|---|---|
+| `mix9` | `63af883` | 19,687,838 | 1.575 | 789.6 | 802.8 | 1258.2 |
+| `mix9`, `kMaxLevel` 22 | experiment, not committed | 19,849,694 | 1.588 | – | – | – |
+| `mix9`, no match model | experiment, not committed | 20,323,230 | 1.626 | – | – | – |
 | `mix6` | `v0.2` | 22,527,170 | 1.802 | 381.5 | 402.5 | 856.8 |
 | `mix6`, levels capped at 20 | experiment, not committed | 23,459,891 | 1.877 | – | – | – |
 | `mix6`, one weight set | experiment, not committed | 22,864,484 | 1.829 | – | – | – |
 | `order0` | `v0.1` | 61,263,585 | 4.901 | 31.0 | 45.5 | 254.4 |
 | `order0`, adaptation shift 4 | experiment, not committed | 61,947,984 | 4.956 | – | – | – |
 
-The shipped rows were measured at `0eb8c7d` and `1aea9b1`, on the `stage-2`
-and `stage-1` branches, before each stage was merged. Their model and coder
-code is identical to the tagged code, which makes the same archives.
+The `mix9` row was measured at `63af883` on the `stage-3` branch, before
+the stage was merged or tagged; `mix9` is experimental until `v0.3`. The
+other shipped rows were measured at `0eb8c7d` and `1aea9b1`, on the
+`stage-2` and `stage-1` branches, before each stage was merged. Their model
+and coder code is identical to the tagged code, which makes the same
+archives.
+
+`mix9` is the stage 3 codec; its target was 20 MB or better. The prototype
+in its brief measured 19,687,808 bytes of ideal code length; the archive
+is 30 bytes more, 25 of them the header, level byte and coder flush. It
+runs at level 23 on this file, so 1,044.4 MiB of its peak memory is the
+model. It takes about twice as long per byte as `mix6`, as the brief
+expected.
+
+The two `mix9` experiments are the ones the stage brief asked for, each
+built once from `63af883` with one thing changed:
+
+- `kMaxLevel` lowered from 23 to 22. The model shrinks to 524.4 MiB, half,
+  and the archive grows by 0.8%.
+- No match model: its input held at 0, and the mixer's weight set chosen by
+  the previous byte alone. The archive grows by 3.2%.
+
+They were built with GCC 13 on Linux (WSL 2, same machine). That build
+makes the same archive from the shipped codec as MSVC does, all 19,687,838
+bytes of it, at 753 / 753 ns per byte; the experiments ran at 715 / 748
+and 776 / 797.
 
 `mix6` is the stage 2 codec, as shipped; its target was under 25 MB. It runs
 at level 22 on this file, so 640.5 MiB of its peak memory is the model's
