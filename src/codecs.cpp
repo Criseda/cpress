@@ -83,7 +83,7 @@ constexpr std::array<Codec, 3> kCodecs{{
      .summary = "order-0 bitwise model",
      .encode = &codec::encode_bitwise<model::Order0>,
      .decode = &codec::decode_bitwise<model::Order0>},
-    // Codec 2: orders 1 to 6, mixed. Experimental until stage 2 is tagged.
+    // Codec 2: orders 1 to 6, mixed. Frozen at v0.2: its output is permanent.
     {.id = 2,
      .name = "mix6",
      .summary = "orders 1-6, logistic mixing",

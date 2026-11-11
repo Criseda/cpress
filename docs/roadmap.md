@@ -10,7 +10,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 |---|---|---|---|
 | 0 | Harness | Round trip and benchmark work | done |
 | 1 | Arithmetic coder + order-0 model | 64 MB or better (61.3 MB) | done |
-| 2 | Context mixing | under 25 MB | 2–3 weeks |
+| 2 | Context mixing | under 25 MB (22.5 MB) | done |
 | 3 | lpaq-class model | 20 MB or better | 3–4 weeks |
 | 4 | Performance | same size at 870 ns/byte or better | 3–4 weeks |
 | 5 | Market data | beat column-split + zstd | 6–8 weeks |
@@ -47,7 +47,7 @@ Brief: [stage-1.md](stage-1.md).
 
 **Exit:** 64 MB or better; identical archive bytes on MSVC, GCC and Clang.
 
-## Stage 2: context mixing
+## Stage 2: context mixing (done)
 
 Brief: [stage-2.md](stage-2.md).
 

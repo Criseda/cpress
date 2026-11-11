@@ -25,8 +25,7 @@
 //               the same two rules applied to the bytes after the level.
 //               Any other level is corrupt. The decoder allocates the tables
 //               the level calls for, from 192 KiB at 10 to 640.5 MiB at 22,
-//               whatever the original size. Experimental until v0.2 is
-//               tagged.
+//               whatever the original size. Frozen at v0.2.
 #pragma once
 
 #include <array>

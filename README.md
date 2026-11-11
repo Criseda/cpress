@@ -2,12 +2,12 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 2 (awaiting review).** The container format, command-line
-tool, tests and benchmark runner work end to end. There are three codecs:
-`stored`, which does not compress; `order0`, a binary arithmetic coder
-driven by an order-0 bitwise model; and `mix6`, the default, which drives
-the same coder with six hashed context models, orders 1 to 6, combined by a
-logistic mixer.
+**Status: stage 2 done, tagged `v0.2`; stage 3 is next.** The container
+format, command-line tool, tests and benchmark runner work end to end. There
+are three codecs: `stored`, which does not compress; `order0`, a binary
+arithmetic coder driven by an order-0 bitwise model; and `mix6`, the
+default, which drives the same coder with six hashed context models, orders
+1 to 6, combined by a logistic mixer.
 
 ## Build
 
@@ -58,11 +58,15 @@ run to run on this machine.
 
 | Codec | Commit | Size (bytes) | Bits/byte | Compress ns/B | Decompress ns/B | Peak MiB |
 |---|---|---|---|---|---|---|
-| `mix6` | `0eb8c7d` | 22,527,170 | 1.802 | 381.5 | 402.5 | 856.8 |
+| `mix6` | `v0.2` | 22,527,170 | 1.802 | 381.5 | 402.5 | 856.8 |
 | `mix6`, levels capped at 20 | experiment, not committed | 23,459,891 | 1.877 | – | – | – |
 | `mix6`, one weight set | experiment, not committed | 22,864,484 | 1.829 | – | – | – |
-| `order0` | `1aea9b1` | 61,263,585 | 4.901 | 31.0 | 45.5 | 254.4 |
+| `order0` | `v0.1` | 61,263,585 | 4.901 | 31.0 | 45.5 | 254.4 |
 | `order0`, adaptation shift 4 | experiment, not committed | 61,947,984 | 4.956 | – | – | – |
+
+The shipped rows were measured at `0eb8c7d` and `1aea9b1`, on the `stage-2`
+and `stage-1` branches, before each stage was merged. Their model and coder
+code is identical to the tagged code, which makes the same archives.
 
 `mix6` is the stage 2 codec, as shipped; its target was under 25 MB. It runs
 at level 22 on this file, so 640.5 MiB of its peak memory is the model's
@@ -112,7 +116,7 @@ match the header.
 |---|---|---|
 | 0 | `stored` | The original bytes |
 | 1 | `order0` | Arithmetic-coded bits, then 4 flush bytes (frozen at `v0.1`) |
-| 2 | `mix6` | One byte, the model's memory level; then arithmetic-coded bits and 4 flush bytes (experimental until `v0.2`) |
+| 2 | `mix6` | One byte, the model's memory level; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.2`) |
 
 `order0` and `mix6` code each byte most significant bit first. Every bit is
 coded with a 12-bit probability P(bit = 1) from the model, by a carryless
@@ -140,7 +144,7 @@ be chosen differently later without a format change.
 | `tests/` | Component, golden-archive, round-trip, corruption and mutation tests |
 | `bench/` | The `cpress-bench` runner |
 | `corpus/` | Benchmark inputs (not tracked) |
-| `docs/` | Code style and review checklist |
+| `docs/` | The idea, roadmap, stage briefs and code style |
 
 ## Design rules
 
@@ -158,7 +162,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 |---|---|---|
 | 0 | Harness: container, CLI, tests, benchmark | done |
 | 1 | Binary arithmetic coder + order-0 model | done: 61.3 MB (target 64 MB or better) |
-| 2 | Hashed order 1–6 models + logistic mixer | under 25 MB (22.5 MB, awaiting review) |
+| 2 | Hashed order 1–6 models + logistic mixer | done: 22.5 MB (target under 25 MB) |
 | 3 | Bit-history states, probability maps, match model | 20 MB or better |
 | 4 | Cache-aware tables, prefetching, SIMD mixer | same size at 870 ns/byte or better |
 | 5 | Market data: order-book-aware model for exchange feeds | beat column-split + zstd |
@@ -171,5 +175,5 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/idea.md](docs/idea.md) | Why the project exists, how context mixing works, goals and non-goals |
 | [docs/roadmap.md](docs/roadmap.md) | Every stage in detail, with exit criteria |
 | [docs/stage-1.md](docs/stage-1.md) | The brief for stage 1 |
-| [docs/stage-2.md](docs/stage-2.md) | The brief for the current stage |
+| [docs/stage-2.md](docs/stage-2.md) | The brief for stage 2 |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
