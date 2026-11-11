@@ -19,7 +19,14 @@
 //   1   order0  Arithmetic-coded bits, each byte most significant bit first,
 //               then the coder's 4 flush bytes. The payload must be consumed
 //               exactly, and the original size may not exceed 4096 times the
-//               payload size. Experimental until v0.1 is tagged.
+//               payload size. Frozen at v0.1.
+//   2   mix6    One byte, the model's memory level, 10 to 22; then
+//               arithmetic-coded bits and 4 flush bytes as for order0, with
+//               the same two rules applied to the bytes after the level.
+//               Any other level is corrupt. The decoder allocates the tables
+//               the level calls for, from 192 KiB at 10 to 640.5 MiB at 22,
+//               whatever the original size. Experimental until v0.2 is
+//               tagged.
 #pragma once
 
 #include <array>

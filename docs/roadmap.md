@@ -9,7 +9,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | Stage | Goal | Exit number | Estimate |
 |---|---|---|---|
 | 0 | Harness | Round trip and benchmark work | done |
-| 1 | Arithmetic coder + order-0 model | 64 MB or better | 1 week |
+| 1 | Arithmetic coder + order-0 model | 64 MB or better (61.3 MB) | done |
 | 2 | Context mixing | under 25 MB | 2–3 weeks |
 | 3 | lpaq-class model | 20 MB or better | 3–4 weeks |
 | 4 | Performance | same size at 870 ns/byte or better | 3–4 weeks |
@@ -36,7 +36,7 @@ Container format, `cpress` CLI, round-trip and corruption tests, and
 `cpress-bench`, which records size, speed, peak memory and git commit per
 file. The only codec is `stored`.
 
-## Stage 1: arithmetic coder and order-0 model
+## Stage 1: arithmetic coder and order-0 model (done)
 
 Brief: [stage-1.md](stage-1.md).
 
@@ -49,18 +49,21 @@ Brief: [stage-1.md](stage-1.md).
 
 ## Stage 2: context mixing
 
+Brief: [stage-2.md](stage-2.md).
+
 - **Hashed context models** for orders 1 to 6: the last *n* bytes are hashed
   to a slot holding adaptive probabilities for the bits of the next byte.
 - **Logistic mixing:** predictions are combined in the stretched domain,
   `stretch(p) = ln(p / (1 - p))`, by a weighted sum whose weights are trained
   online to reduce coding cost. Weight sets are selected by a small context.
 - **Fixed-point `stretch` and `squash` tables**, generated at compile time.
-- A memory budget option, so table sizes are explicit.
+- A memory level, stored in the archive, so table sizes are explicit.
 
 **Exit:** under 25 MB, which beats xz and zstd. Speed is recorded, not tuned.
 
-**Open questions for the brief:** hash function and slot layout; how many
-weight sets; learning rate schedule.
+The brief settles what this section left open, by measurement: a Fibonacci
+hash to a 32-byte slot of sixteen counters per nibble; 256 weight sets,
+chosen by the previous byte; a fixed learning rate.
 
 ## Stage 3: lpaq-class model
 

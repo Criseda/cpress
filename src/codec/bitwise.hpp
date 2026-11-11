@@ -6,6 +6,10 @@
 // call it identically; that is what keeps the decoder in step with the
 // encoder.
 //
+// Each comes in two forms. One takes a predictor the caller has constructed,
+// for models that need arguments; it must be fresh, never used before. The
+// other constructs a predictor that needs none and calls the first.
+//
 // Payload layout: the arithmetic coder's output, then its four flush bytes.
 // There is no length field; the byte count in the container header says how
 // many bytes to decode, and the payload must be consumed exactly.
@@ -16,6 +20,7 @@
 #include "model/predictor.hpp"
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -57,15 +62,15 @@ inline void require_within_expansion(std::uint64_t output_bytes, std::uint64_t p
 
 }  // namespace detail
 
-// Appends the payload for `input` to `output`.
+// Appends the payload for `input` to `output`, coded with `predictor`, which
+// must be freshly constructed.
 template <model::Predictor P>
-void encode_bitwise(ByteView input, Bytes& output) {
+void encode_bitwise(P& predictor, ByteView input, Bytes& output) {
     // The coder appends to a vector, which can allocate. Reserve a little
     // more than the input so growth is rare: a compressible input needs less,
     // and random input grows by about one percent.
     output.reserve(output.size() + input.size() + (input.size() / 64) + 16);
 
-    P predictor;
     coder::Encoder encoder(output);
     for (const std::uint8_t byte : input) {
         for (int shift = 7; shift >= 0; --shift) {
@@ -77,8 +82,18 @@ void encode_bitwise(ByteView input, Bytes& output) {
     encoder.finish();
 }
 
-// Appends `original_size` decoded bytes to `output`. Everything here comes
-// from an untrusted archive, so it throws cpress::Error unless:
+// The same, with a default-constructed predictor.
+template <model::Predictor P>
+    requires std::default_initializable<P>
+void encode_bitwise(ByteView input, Bytes& output) {
+    P predictor;
+    encode_bitwise(predictor, input, output);
+}
+
+// Appends `original_size` decoded bytes to `output`, decoded with
+// `predictor`, which must be freshly constructed, as the encoder's was and
+// with the same arguments. Everything here comes from an untrusted archive,
+// so it throws cpress::Error unless:
 //   1. original_size is at most kMaxExpansion times the payload size, which
 //      bounds both the work and the memory by the size of the input. This
 //      holds on entry and for what is left after every byte;
@@ -96,7 +111,7 @@ void encode_bitwise(ByteView input, Bytes& output) {
 // times over. A header that claims that much or more, short of the ceiling,
 // costs a decode of everything the payload yields before rule 2 rejects it.
 template <model::Predictor P>
-void decode_bitwise(ByteView payload, std::uint64_t original_size, Bytes& output) {
+void decode_bitwise(P& predictor, ByteView payload, std::uint64_t original_size, Bytes& output) {
     const std::uint64_t payload_size = payload.size();
     detail::require_within_expansion(original_size, payload_size);
 
@@ -109,7 +124,6 @@ void decode_bitwise(ByteView payload, std::uint64_t original_size, Bytes& output
     output.reserve(output.size() +
                    static_cast<std::size_t>(std::min(original_size, reserve_limit)));
 
-    P predictor;
     coder::Decoder decoder(payload);
     for (std::uint64_t decoded = 0; decoded < original_size; ++decoded) {
         // Rule 1 for what is left: the bytes still to decode must fit in the
@@ -138,6 +152,14 @@ void decode_bitwise(ByteView payload, std::uint64_t original_size, Bytes& output
     if (decoder.consumed() != payload.size()) {
         throw Error("corrupt archive: payload has bytes left over");
     }
+}
+
+// The same, with a default-constructed predictor.
+template <model::Predictor P>
+    requires std::default_initializable<P>
+void decode_bitwise(ByteView payload, std::uint64_t original_size, Bytes& output) {
+    P predictor;
+    decode_bitwise(predictor, payload, original_size, output);
 }
 
 }  // namespace cpress::codec

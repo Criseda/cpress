@@ -40,6 +40,12 @@ bool throws_error(F&& f) {
 // arguments: paths to round-trip through every codec.
 void run_coder_tests();
 void run_order0_tests();
+void run_logistic_tests();
+void run_counter_tests();
+void run_context_table_tests();
+void run_mixer_tests();
+void run_mix6_tests();
+void run_golden_tests();
 void run_roundtrip_tests(std::span<const char* const> files);
 
 }  // namespace cpress::test

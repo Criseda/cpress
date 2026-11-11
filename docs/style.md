@@ -88,6 +88,10 @@ bits, not `p`.
 - **Unsigned arithmetic for bit work.** Shift and mask unsigned types only,
   by less than their width. `std::uint8_t` and `std::uint16_t` promote to
   `int`: compute in `std::uint32_t` and cast on the store.
+- **Signed fixed point is the one exception.** A stretched probability or a
+  mixer weight is signed, and may be shifted right: C++20 defines that as an
+  arithmetic shift. It is never shifted left (multiply instead), and the
+  bound that keeps each operation from overflowing is stated beside it.
 - **`[[nodiscard]]`** on every function whose result is the reason to call it.
 - **`explicit`** on single-argument constructors. Rule of zero: a type that
   needs a destructor or copy operations needs a comment saying why.
@@ -108,6 +112,10 @@ bits, not `p`.
   `std::bad_alloc`, not `std::length_error`, not a crash or a hang.
 - Allocate in proportion to the bytes actually present, never to a size the
   archive claims, even one that passed a sanity check.
+- A codec's model tables are the one exception. Their size comes from a
+  level stored in the archive, which the decoder checks against a
+  compile-time maximum before allocating anything; running out of memory
+  for them is reported as `cpress::Error`.
 
 ## Invariants
 

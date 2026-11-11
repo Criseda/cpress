@@ -5,6 +5,7 @@
 #include "codec/bitwise.hpp"
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
+#include "model/mix6.hpp"
 #include "model/order0.hpp"
 
 #include <algorithm>
@@ -242,21 +243,78 @@ void check_extreme_expansion(std::uint8_t fill, std::uint64_t least_expansion) {
 
 // kMaxExpansion must sit above the greatest expansion a valid payload can
 // reach, or decode_bitwise would reject real archives. All-ones bytes through
-// AlwaysOne are that extreme; all-zeros bytes through order0 are the nearest
-// a shipped codec comes to it.
+// AlwaysOne are that extreme; all-zeros bytes through order0 show how near a
+// real model comes to it.
 void test_expansion_ceiling() {
     check_extreme_expansion<AlwaysOne>(0xFF, 2000);
     check_extreme_expansion<model::Order0>(0x00, 1000);
+}
+
+// The payload of codec 2 for `data` with the model at `level`: what the codec
+// writes, except that the level is the caller's choice.
+cpress::Bytes mix6_payload(const cpress::Bytes& data, int level) {
+    cpress::Bytes payload{static_cast<std::uint8_t>(level)};
+    model::Mix6 predictor(level);
+    codec::encode_bitwise(predictor, data, payload);
+    return payload;
+}
+
+// The level byte of a mix6 payload is untrusted: one outside the model's
+// limits is rejected, as is a payload too short to have one.
+void test_mix6_level_byte() {
+    const cpress::Codec* codec = cpress::find_codec(std::string_view{"mix6"});
+    CHECK(codec != nullptr);
+    if (codec == nullptr) return;
+
+    const cpress::Bytes data = bytes_of("the level byte comes first");
+    const cpress::Bytes good = mix6_payload(data, model::Mix6::kMinLevel);
+    auto rejects = [&](const cpress::Bytes& payload) {
+        cpress::Bytes output;
+        return throws_error([&] { codec->decode(payload, data.size(), output); });
+    };
+    CHECK(!rejects(good));
+    CHECK(rejects({}));
+
+    for (const int level : {0, model::Mix6::kMinLevel - 1, model::Mix6::kMaxLevel + 1, 255}) {
+        cpress::Bytes payload = good;
+        payload.at(0) = static_cast<std::uint8_t>(level);
+        CHECK(rejects(payload));
+    }
+}
+
+// The decoder uses the level the archive states, not the one this encoder
+// would have chosen: the same small input decodes at the smallest level and
+// at the largest. The second allocates everything a level byte can ask for,
+// which makes it the test that reaches the decoder's allocation limit.
+void test_mix6_decodes_any_level() {
+    const cpress::Codec* codec = cpress::find_codec(std::string_view{"mix6"});
+    CHECK(codec != nullptr);
+    if (codec == nullptr) return;
+
+    const cpress::Bytes data = bytes_of("a small input, coded with a model of any size");
+    for (const int level : {model::Mix6::kMinLevel, model::Mix6::kMaxLevel}) {
+        const cpress::Bytes payload = mix6_payload(data, level);
+        CHECK(payload.at(0) == static_cast<std::uint8_t>(level));
+        cpress::Bytes decoded;
+        CHECK(!throws_error([&] { codec->decode(payload, data.size(), decoded); }));
+        CHECK(decoded == data);
+    }
 }
 
 // 10,000 random mutations of one valid archive per codec. Each must either be
 // rejected with cpress::Error or decode normally; anything else (another
 // exception type, a crash, a hang, a sanitizer report) is a bug. Seeded, so a
 // failure reproduces.
+//
+// The text is short because every mutation costs a decode of it, and a
+// decode through mix6 costs many times one through order0. Its length does
+// not change what the test proves: every kind of mutation still lands on the
+// header and on a payload that takes the decoder through whole bytes.
 void test_mutations() {
     constexpr int kMutations = 10'000;
+    constexpr int kSentences = 10;
     std::string text;
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < kSentences; ++i) {
         text += "mutation testing: the quick brown fox " + std::to_string(i * i) + ". ";
     }
     const cpress::Bytes data = bytes_of(text);
@@ -310,7 +368,9 @@ struct ArchiveChecksum {
     std::uint32_t crc32;
 };
 
-constexpr std::array<ArchiveChecksum, 6> kOrder0Checksums{{
+using ArchiveChecksums = std::array<ArchiveChecksum, 6>;
+
+constexpr ArchiveChecksums kOrder0Checksums{{
     {"empty", 0xe2ccc027},
     {"one byte", 0x87d73a85},
     {"zeros 64 KiB", 0x0825ae3a},
@@ -319,26 +379,40 @@ constexpr std::array<ArchiveChecksum, 6> kOrder0Checksums{{
     {"repetitive text", 0xe13ff503},
 }};
 
-void test_determinism() {
-    const cpress::Codec* codec = cpress::find_codec(std::string_view{"order0"});
+constexpr ArchiveChecksums kMix6Checksums{{
+    {"empty", 0x92f3c34d},
+    {"one byte", 0xdbd12293},
+    {"zeros 64 KiB", 0x8ea6845f},
+    {"random 1 MiB", 0x0ef3d68f},
+    {"every byte value", 0xe3c6c63a},
+    {"repetitive text", 0x09956ca7},
+}};
+
+void check_determinism(std::string_view codec_name, const ArchiveChecksums& checksums,
+                       const std::vector<Sample>& inputs) {
+    const cpress::Codec* codec = cpress::find_codec(codec_name);
     CHECK(codec != nullptr);
     if (codec == nullptr) return;
 
-    const std::vector<Sample> inputs = samples();
-    CHECK(inputs.size() == kOrder0Checksums.size());
+    CHECK(inputs.size() == checksums.size());
     for (const Sample& sample : inputs) {
-        const auto expected = std::ranges::find_if(
-            kOrder0Checksums, [&](const auto& c) { return c.sample == sample.name; });
-        CHECK(expected != kOrder0Checksums.end());
-        if (expected == kOrder0Checksums.end()) continue;
+        const auto expected =
+            std::ranges::find_if(checksums, [&](const auto& c) { return c.sample == sample.name; });
+        CHECK(expected != checksums.end());
+        if (expected == checksums.end()) continue;
 
         const std::uint32_t actual = cpress::crc32(cpress::compress(sample.data, *codec));
         CHECK(actual == expected->crc32);
         if (actual != expected->crc32) {
-            std::cerr << "  archive CRC-32 of '" << sample.name << "' is 0x" << std::hex << actual
-                      << std::dec << "\n";
+            std::cerr << "  " << codec_name << " archive CRC-32 of '" << sample.name << "' is 0x"
+                      << std::hex << actual << std::dec << "\n";
         }
     }
+}
+
+void test_determinism(const std::vector<Sample>& inputs) {
+    check_determinism("order0", kOrder0Checksums, inputs);
+    check_determinism("mix6", kMix6Checksums, inputs);
 }
 
 // Bytes needed to code `data` with the best possible order-0 model, i.e.
@@ -356,41 +430,68 @@ double order0_entropy_bytes(const cpress::Bytes& data) {
     return bits / 8;
 }
 
+// The sample called `name`. Every caller names one that exists.
+const Sample& sample_named(const std::vector<Sample>& inputs, std::string_view name) {
+    return *std::ranges::find_if(inputs, [&](const Sample& s) { return s.name == name; });
+}
+
+// The size of the archive the codec called `codec_name` makes of `data`.
+double archive_size(std::string_view codec_name, const cpress::Bytes& data) {
+    const cpress::Codec* codec = cpress::find_codec(codec_name);
+    CHECK(codec != nullptr);
+    if (codec == nullptr) return 0;
+    return static_cast<double>(cpress::compress(data, *codec).size());
+}
+
 // order0 must actually compress. An order-0 model sees only byte frequencies,
 // not repetition, so the target is the byte-histogram entropy (55% of the
 // repetitive-text sample, not less) plus what adapting costs: under 3% on
 // this sample with the adaptation shift of 5. Random data cannot be
 // compressed at all, so it grows by about 1.2% (2.5% with a shift of 4).
-void test_compression_happens() {
-    const cpress::Codec* codec = cpress::find_codec(std::string_view{"order0"});
-    CHECK(codec != nullptr);
-    if (codec == nullptr) return;
+void test_order0_compresses(const std::vector<Sample>& inputs) {
+    const cpress::Bytes& text = sample_named(inputs, "repetitive text").data;
+    const double text_archive = archive_size("order0", text);
+    CHECK(text_archive < 0.6 * static_cast<double>(text.size()));
+    CHECK(text_archive < (1.05 * order0_entropy_bytes(text)) + 24);
 
-    for (const Sample& sample : samples()) {
-        const auto archive_size = static_cast<double>(cpress::compress(sample.data, *codec).size());
-        const auto original_size = static_cast<double>(sample.data.size());
-        if (sample.name == "repetitive text") {
-            CHECK(archive_size < 0.6 * original_size);
-            CHECK(archive_size < (1.05 * order0_entropy_bytes(sample.data)) + 24);
-        } else if (sample.name == "random 1 MiB") {
-            CHECK(archive_size > original_size);
-            CHECK(archive_size < 1.015 * original_size);
-        }
-    }
+    const cpress::Bytes& random = sample_named(inputs, "random 1 MiB").data;
+    const double random_archive = archive_size("order0", random);
+    CHECK(random_archive > static_cast<double>(random.size()));
+    CHECK(random_archive < 1.015 * static_cast<double>(random.size()));
+}
+
+// mix6 must compress far better. Its long contexts see the repetition order0
+// cannot: once the 45-byte sentence has gone by a few times every bit is
+// predicted with near certainty, and the rest of the sample's 90,000 bytes
+// costs almost nothing. Random data still cannot be compressed, but six
+// models that know nothing agree on one half, so it grows by about 0.3%, a
+// quarter of what adaptation noise costs order0.
+void test_mix6_compresses(const std::vector<Sample>& inputs) {
+    const cpress::Bytes& text = sample_named(inputs, "repetitive text").data;
+    CHECK(archive_size("mix6", text) < 0.005 * static_cast<double>(text.size()));
+
+    const cpress::Bytes& random = sample_named(inputs, "random 1 MiB").data;
+    const double random_archive = archive_size("mix6", random);
+    CHECK(random_archive > static_cast<double>(random.size()));
+    CHECK(random_archive < 1.005 * static_cast<double>(random.size()));
 }
 
 }  // namespace
 
 void run_roundtrip_tests(std::span<const char* const> files) {
+    const std::vector<Sample> inputs = samples();
     test_crc32();
     test_codec_registry();
-    test_round_trips(samples());
+    test_round_trips(inputs);
     test_corruption();
     test_decode_bitwise_limits();
     test_expansion_ceiling();
+    test_mix6_level_byte();
+    test_mix6_decodes_any_level();
     test_mutations();
-    test_determinism();
-    test_compression_happens();
+    test_determinism(inputs);
+    test_order0_compresses(inputs);
+    test_mix6_compresses(inputs);
 
     try {
         std::vector<Sample> loaded;
