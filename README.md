@@ -2,12 +2,14 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 2 done, tagged `v0.2`; stage 3 is next.** The container
-format, command-line tool, tests and benchmark runner work end to end. There
-are three codecs: `stored`, which does not compress; `order0`, a binary
-arithmetic coder driven by an order-0 bitwise model; and `mix6`, the
-default, which drives the same coder with six hashed context models, orders
-1 to 6, combined by a logistic mixer.
+**Status: stage 2 done, tagged `v0.2`; stage 3 implemented, not yet tagged.**
+The container format, command-line tool, tests and benchmark runner work end
+to end. There are four codecs: `stored`, which does not compress; `order0`, a
+binary arithmetic coder driven by an order-0 bitwise model; `mix6`, which
+drives the same coder with six hashed context models, orders 1 to 6,
+combined by a logistic mixer; and `mix9`, the default, which keeps a bit
+history in each context, adds a match model and two word contexts, and
+refines the mix with two adaptive probability maps.
 
 ## Build
 
@@ -35,8 +37,8 @@ cpress codecs
 
 `cpress` never overwrites an existing file unless you pass `-f`.
 
-`mix6` sizes its model to the input: about 190 KiB for a file of a kilobyte,
-640 MiB for anything over 2 MiB. Decompression needs the same memory as
+`mix9` sizes its model to the input: about 4.3 MiB for a file of a kilobyte,
+1,044 MiB for anything over 4 MiB. (`mix6` needs 190 KiB to 640 MiB.) Decompression needs the same memory as
 compression did.
 
 ## Benchmark
@@ -117,8 +119,9 @@ match the header.
 | 0 | `stored` | The original bytes |
 | 1 | `order0` | Arithmetic-coded bits, then 4 flush bytes (frozen at `v0.1`) |
 | 2 | `mix6` | One byte, the model's memory level; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.2`) |
+| 3 | `mix9` | As `mix6`, with a level of 10 to 23 (experimental until `v0.3`) |
 
-`order0` and `mix6` code each byte most significant bit first. Every bit is
+`order0`, `mix6` and `mix9` code each byte most significant bit first. Every bit is
 coded with a 12-bit probability P(bit = 1) from the model, by a carryless
 32-bit binary arithmetic coder. The coded part of the payload is exactly the
 coder's output; the decoder must consume it exactly, and the header's
@@ -130,6 +133,11 @@ the model's larger tables has 2^level slots of 32 bytes, which comes to
 picks the smallest level with 2^level at least the input size. The
 decompressor allocates what the archive's level calls for, so the level can
 be chosen differently later without a format change.
+
+The level byte of `mix9` is 10 to 23, chosen and checked by the same rules.
+Each of its eight history tables but the first has 2^level slots of 16
+bytes, and its match model a buffer of the same size; with fixed tables of
+4.2 MiB that comes to 4.3 MiB at level 10 and 1,044.4 MiB at level 23.
 
 ## Layout
 

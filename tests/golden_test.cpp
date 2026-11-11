@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <string_view>
 
 namespace cpress::test {
@@ -32,16 +33,39 @@ constexpr std::array<std::uint8_t, 94> kOrder0Archive{
     0x23, 0x49, 0x89, 0xd1, 0x3b, 0x5e, 0xb7, 0x8c, 0x35, 0x45, 0x78, 0x79, 0xc4, 0x2f,
 };
 
-void test_order0_golden_archive() {
-    const cpress::Bytes text(kOrder0Text.begin(), kOrder0Text.end());
-    const cpress::Bytes archive(kOrder0Archive.begin(), kOrder0Archive.end());
+// Codec 2, mix6, frozen at v0.2. Produced at b33cbfe, whose model and coder
+// code is the tagged code, by:
+//   printf '%s' '<kMix6Text>' > golden.txt
+//   cpress c --codec mix6 golden.txt
+// The payload starts with the level byte, 10 (kMinLevel), at offset 20. The
+// text is too short for six contexts to learn much, so the archive is
+// thirteen bytes longer than its input.
+constexpr std::uint8_t kMix6Id = 2;
+constexpr std::string_view kMix6Text =
+    "cpress codec 2 (mix6), frozen by stage 2: this text must decode from these bytes forever.";
+constexpr std::array<std::uint8_t, 102> kMix6Archive{
+    0x43, 0x50, 0x52, 0x53, 0x01, 0x02, 0x00, 0x00, 0x59, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xbb, 0xc9, 0xfa, 0x9b, 0x0a, 0x9c, 0x8f, 0x8d, 0x9a, 0x8c, 0x8c, 0xe0, 0xe3, 0xfe,
+    0xab, 0xa4, 0x77, 0xc6, 0x81, 0x03, 0x19, 0xe8, 0x9b, 0x26, 0x39, 0x90, 0x22, 0xab, 0x60,
+    0xa3, 0x2b, 0x00, 0x87, 0xf8, 0x73, 0x2e, 0xd9, 0xa2, 0xe2, 0x55, 0x21, 0x25, 0xf4, 0xb4,
+    0x6b, 0x0f, 0xbc, 0x80, 0xe2, 0x1a, 0xa8, 0xc5, 0x32, 0xc1, 0x45, 0x6c, 0xbc, 0x3f, 0xa7,
+    0xed, 0x15, 0x19, 0x62, 0x95, 0x38, 0x0f, 0x93, 0x99, 0x4b, 0xe2, 0x5f, 0xe4, 0x07, 0xfc,
+    0xbe, 0x71, 0xc8, 0x6d, 0x86, 0xb3, 0xc7, 0x05, 0x55, 0x0a, 0x6b, 0x1c,
+};
 
-    CHECK(cpress::read_header(archive).codec_id == kOrder0Id);
+// The archive decodes to its text, and the text compresses to exactly the
+// archive.
+void check_golden_archive(std::uint8_t codec_id, std::string_view text_view,
+                          std::span<const std::uint8_t> archive_bytes) {
+    const cpress::Bytes text(text_view.begin(), text_view.end());
+    const cpress::Bytes archive(archive_bytes.begin(), archive_bytes.end());
+
+    CHECK(cpress::read_header(archive).codec_id == codec_id);
     cpress::Bytes decoded;
     CHECK(!throws_error([&] { decoded = cpress::decompress(archive); }));
     CHECK(decoded == text);
 
-    const cpress::Codec* codec = cpress::find_codec(kOrder0Id);
+    const cpress::Codec* codec = cpress::find_codec(codec_id);
     CHECK(codec != nullptr);
     if (codec == nullptr) return;
     CHECK(cpress::compress(text, *codec) == archive);
@@ -50,7 +74,8 @@ void test_order0_golden_archive() {
 }  // namespace
 
 void run_golden_tests() {
-    test_order0_golden_archive();
+    check_golden_archive(kOrder0Id, kOrder0Text, kOrder0Archive);
+    check_golden_archive(kMix6Id, kMix6Text, kMix6Archive);
 }
 
 }  // namespace cpress::test

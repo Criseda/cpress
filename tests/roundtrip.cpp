@@ -6,6 +6,7 @@
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
 #include "model/mix6.hpp"
+#include "model/mix9.hpp"
 #include "model/order0.hpp"
 
 #include <algorithm>
@@ -26,15 +27,6 @@ namespace {
 
 cpress::Bytes bytes_of(std::string_view text) {
     return {text.begin(), text.end()};
-}
-
-cpress::Bytes random_bytes(std::size_t count, std::uint64_t seed) {
-    std::mt19937_64 rng(seed);
-    cpress::Bytes data(count);
-    for (std::uint8_t& byte : data) {
-        byte = static_cast<std::uint8_t>(rng() >> 56);
-    }
-    return data;
 }
 
 struct Sample {
@@ -250,24 +242,28 @@ void test_expansion_ceiling() {
     check_extreme_expansion<model::Order0>(0x00, 1000);
 }
 
-// The payload of codec 2 for `data` with the model at `level`: what the codec
-// writes, except that the level is the caller's choice.
-cpress::Bytes mix6_payload(const cpress::Bytes& data, int level) {
+// The payload of a codec with a memory level (codecs 2 and 3) for `data`,
+// with the model at `level`: what the codec writes, except that the level is
+// the caller's choice. The encoder's model is gone before this returns, so a
+// decoder that follows does not hold two at once.
+template <model::Predictor Model>
+cpress::Bytes levelled_payload(const cpress::Bytes& data, int level) {
     cpress::Bytes payload{static_cast<std::uint8_t>(level)};
-    model::Mix6 predictor(level);
+    Model predictor(level);
     codec::encode_bitwise(predictor, data, payload);
     return payload;
 }
 
-// The level byte of a mix6 payload is untrusted: one outside the model's
-// limits is rejected, as is a payload too short to have one.
-void test_mix6_level_byte() {
-    const cpress::Codec* codec = cpress::find_codec(std::string_view{"mix6"});
+// The level byte is untrusted: one outside the model's limits is rejected,
+// as is a payload too short to have one.
+template <model::Predictor Model>
+void test_level_byte(std::string_view codec_name) {
+    const cpress::Codec* codec = cpress::find_codec(codec_name);
     CHECK(codec != nullptr);
     if (codec == nullptr) return;
 
     const cpress::Bytes data = bytes_of("the level byte comes first");
-    const cpress::Bytes good = mix6_payload(data, model::Mix6::kMinLevel);
+    const cpress::Bytes good = levelled_payload<Model>(data, Model::kMinLevel);
     auto rejects = [&](const cpress::Bytes& payload) {
         cpress::Bytes output;
         return throws_error([&] { codec->decode(payload, data.size(), output); });
@@ -275,7 +271,7 @@ void test_mix6_level_byte() {
     CHECK(!rejects(good));
     CHECK(rejects({}));
 
-    for (const int level : {0, model::Mix6::kMinLevel - 1, model::Mix6::kMaxLevel + 1, 255}) {
+    for (const int level : {0, Model::kMinLevel - 1, Model::kMaxLevel + 1, 255}) {
         cpress::Bytes payload = good;
         payload.at(0) = static_cast<std::uint8_t>(level);
         CHECK(rejects(payload));
@@ -286,14 +282,15 @@ void test_mix6_level_byte() {
 // would have chosen: the same small input decodes at the smallest level and
 // at the largest. The second allocates everything a level byte can ask for,
 // which makes it the test that reaches the decoder's allocation limit.
-void test_mix6_decodes_any_level() {
-    const cpress::Codec* codec = cpress::find_codec(std::string_view{"mix6"});
+template <model::Predictor Model>
+void test_decodes_any_level(std::string_view codec_name) {
+    const cpress::Codec* codec = cpress::find_codec(codec_name);
     CHECK(codec != nullptr);
     if (codec == nullptr) return;
 
     const cpress::Bytes data = bytes_of("a small input, coded with a model of any size");
-    for (const int level : {model::Mix6::kMinLevel, model::Mix6::kMaxLevel}) {
-        const cpress::Bytes payload = mix6_payload(data, level);
+    for (const int level : {Model::kMinLevel, Model::kMaxLevel}) {
+        const cpress::Bytes payload = levelled_payload<Model>(data, level);
         CHECK(payload.at(0) == static_cast<std::uint8_t>(level));
         cpress::Bytes decoded;
         CHECK(!throws_error([&] { codec->decode(payload, data.size(), decoded); }));
@@ -307,12 +304,14 @@ void test_mix6_decodes_any_level() {
 // failure reproduces.
 //
 // The text is short because every mutation costs a decode of it, and a
-// decode through mix6 costs many times one through order0. Its length does
-// not change what the test proves: every kind of mutation still lands on the
-// header and on a payload that takes the decoder through whole bytes.
+// decode through mix6 costs many times one through order0. Through mix9 the
+// larger cost is building the model, 4.3 MiB at its smallest, which no
+// length of text changes. The length does not change what the test proves:
+// every kind of mutation still lands on the header and on a payload that
+// takes the decoder through whole bytes.
 void test_mutations() {
     constexpr int kMutations = 10'000;
-    constexpr int kSentences = 10;
+    constexpr int kSentences = 5;
     std::string text;
     for (int i = 0; i < kSentences; ++i) {
         text += "mutation testing: the quick brown fox " + std::to_string(i * i) + ". ";
@@ -388,6 +387,15 @@ constexpr ArchiveChecksums kMix6Checksums{{
     {"repetitive text", 0x09956ca7},
 }};
 
+constexpr ArchiveChecksums kMix9Checksums{{
+    {"empty", 0xf794f80b},
+    {"one byte", 0x2ca7f407},
+    {"zeros 64 KiB", 0xdb995407},
+    {"random 1 MiB", 0x92dff496},
+    {"every byte value", 0x8f56f7c7},
+    {"repetitive text", 0xe3662933},
+}};
+
 void check_determinism(std::string_view codec_name, const ArchiveChecksums& checksums,
                        const std::vector<Sample>& inputs) {
     const cpress::Codec* codec = cpress::find_codec(codec_name);
@@ -413,6 +421,7 @@ void check_determinism(std::string_view codec_name, const ArchiveChecksums& chec
 void test_determinism(const std::vector<Sample>& inputs) {
     check_determinism("order0", kOrder0Checksums, inputs);
     check_determinism("mix6", kMix6Checksums, inputs);
+    check_determinism("mix9", kMix9Checksums, inputs);
 }
 
 // Bytes needed to code `data` with the best possible order-0 model, i.e.
@@ -476,6 +485,22 @@ void test_mix6_compresses(const std::vector<Sample>& inputs) {
     CHECK(random_archive < 1.005 * static_cast<double>(random.size()));
 }
 
+// mix9 must do at least as well. On the repetitive text the match model
+// locks on once the sentence has gone by once and the contexts agree with
+// it: the archive is 116 bytes, against mix6's 121, so 0.2% (180 bytes)
+// leaves a margin of half again. On random data the APMs learn that the mix
+// knows nothing and pull it back towards one half: the archive grows by
+// 0.12%, against mix6's 0.29%, and the bound is half of mix6's.
+void test_mix9_compresses(const std::vector<Sample>& inputs) {
+    const cpress::Bytes& text = sample_named(inputs, "repetitive text").data;
+    CHECK(archive_size("mix9", text) < 0.002 * static_cast<double>(text.size()));
+
+    const cpress::Bytes& random = sample_named(inputs, "random 1 MiB").data;
+    const double random_archive = archive_size("mix9", random);
+    CHECK(random_archive > static_cast<double>(random.size()));
+    CHECK(random_archive < 1.0025 * static_cast<double>(random.size()));
+}
+
 }  // namespace
 
 void run_roundtrip_tests(std::span<const char* const> files) {
@@ -486,12 +511,15 @@ void run_roundtrip_tests(std::span<const char* const> files) {
     test_corruption();
     test_decode_bitwise_limits();
     test_expansion_ceiling();
-    test_mix6_level_byte();
-    test_mix6_decodes_any_level();
+    test_level_byte<model::Mix6>("mix6");
+    test_level_byte<model::Mix9>("mix9");
+    test_decodes_any_level<model::Mix6>("mix6");
+    test_decodes_any_level<model::Mix9>("mix9");
     test_mutations();
     test_determinism(inputs);
     test_order0_compresses(inputs);
     test_mix6_compresses(inputs);
+    test_mix9_compresses(inputs);
 
     try {
         std::vector<Sample> loaded;

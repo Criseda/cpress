@@ -23,6 +23,12 @@ int main(int argc, char** argv) {
     run_context_table_tests();
     run_mixer_tests();
     run_mix6_tests();
+    run_state_table_tests();
+    run_probability_map_tests();
+    run_history_table_tests();
+    run_match_model_tests();
+    run_apm_tests();
+    run_mix9_tests();
     run_golden_tests();
     run_roundtrip_tests(files);
 

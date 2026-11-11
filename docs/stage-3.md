@@ -365,9 +365,19 @@ p12 = (p_mix + apm1 + 2 * apm2) / 4          each term in [1, 4095], so no clamp
 
 The mixer learns from its own output, `p_mix`, not from `p12`.
 
+*Amended in implementation:* `refine` takes its input already stretched,
+`refine(st, context)`, and `Mix9` stretches `p_mix` once for both APMs
+instead of each stretching it. The arithmetic and the output are the same.
+
 Technique: secondary estimation by interpolated buckets in the stretched
 domain is the APM of PAQ7 and lpaq1; *Data Compression Explained* describes
 it as SSE. Find the section and confirm the details before citing it.
+*Amended in implementation:* checked against the sources, the details
+belong to two programs. The 33 points, their initial values and the rate
+of 7 are the APM of paq8l, which updates both points around its input;
+lpaq1's APM has 24 points and updates only the nearer one, as this one
+does. PAQ7's source was not checked, so `apm.hpp` does not credit it. *Data
+Compression Explained* covers SSE in section 4.3.3.
 
 ## 7. Mix9 and the memory level
 
@@ -509,6 +519,12 @@ Stage 2 is tagged `v0.2`, so `mix6` and its output are permanent.
 14. Driven with a bias (input 0.5, bits 90% ones), its output moves towards
     0.9; other contexts are untouched.
 15. Entries stay in `[0, 65535]` for constant sequences of 1,000,000 bits.
+    *Amended in implementation:* inputs sweep every `p12`, but the end
+    points are nearest to only a few of them and do not come to rest in a
+    million bits. The test checks that no point moved against the bit,
+    which arithmetic that wrapped would do, and that the centre point comes
+    to rest: at `65535 - (2^kApmRate - 1)` or above for ones, at 0 for
+    zeros.
 
 **Mix9**
 
@@ -582,6 +598,8 @@ a 16-byte history slot gives twice the slots of a 32-byte counter slot.
 The `kMaxLevel` 22 row kept the match model at its level 23 size. At its
 own level the buffer would hold 64 MiB, which was not measured; a 16 MiB
 buffer cost +0.3% (below), so the true figure is between +0.5% and +0.8%.
+*Amended in implementation:* built at level 22 throughout, match model
+included, `mix9` makes 19,849,694 bytes of `enwik8`, +0.82%.
 
 **Variations,** measured on the design with the last bit remembered in
 small states (19,687,024 bytes, 784 fewer than the design):
