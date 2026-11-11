@@ -13,6 +13,7 @@ namespace cpress::model {
 // one are named with a `p12` suffix or prefix. Bytes are coded most
 // significant bit first.
 inline constexpr int kProbBits = 12;
+inline constexpr std::uint32_t kProbOne = 1U << kProbBits;  // probability 1.0, never produced
 inline constexpr std::uint32_t kProbMax = 4095;
 inline constexpr std::uint32_t kProbMin = 1;
 
@@ -27,12 +28,13 @@ inline constexpr std::uint32_t kProbMin = 1;
 //   - predict() depends only on the bits passed to earlier update() calls.
 //     This is what lets the decoder, which has not seen the bit yet, rebuild
 //     the encoder's predictions exactly.
-//   - A default-constructed predictor is in its initial state. Two fresh
-//     predictors fed the same bits produce the same predictions on every
-//     platform, so models use integer arithmetic only.
+//   - A freshly constructed predictor is in its initial state. Two
+//     constructed with equal arguments and fed the same bits produce the same
+//     predictions on every platform, so models use integer arithmetic only.
 //   - Both calls are noexcept and allocation-free: they run once per bit.
+//     Construction is where a model allocates, and it may throw.
 template <typename P>
-concept Predictor = std::default_initializable<P> && requires(P& p, int bit) {
+concept Predictor = requires(P& p, int bit) {
     { p.predict() } noexcept -> std::same_as<std::uint32_t>;
     { p.update(bit) } noexcept -> std::same_as<void>;
 };

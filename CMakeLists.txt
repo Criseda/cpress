@@ -69,7 +69,12 @@ enable_testing()
 add_executable(cpress-tests
     tests/main.cpp
     tests/coder_test.cpp
+    tests/context_table_test.cpp
+    tests/counter_test.cpp
     tests/golden_test.cpp
+    tests/logistic_test.cpp
+    tests/mix6_test.cpp
+    tests/mixer_test.cpp
     tests/order0_test.cpp
     tests/roundtrip.cpp)
 target_include_directories(cpress-tests PRIVATE src)

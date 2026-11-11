@@ -226,6 +226,13 @@ This is gradient descent on coding cost: the update is the derivative of the
 bit's code length with respect to each weight (Mahoney, *Adaptive Weighing of
 Context Models for Lossless Data Compression*, 2005).
 
+*Amended in implementation:* the credit was checked against the sources, as
+the style guide asks, and is narrower than the sentence above. The 2005
+paper trains the weights of PAQ6's linear mixing on coding cost. Mixing in
+the stretched domain came with PAQ7; the derivation of this update is in
+Mahoney's *Data Compression Explained*, section 4.3.2, and the single-layer
+form used here is lpaq1's. `mixer.hpp` credits each for its part.
+
 ```cpp
 template <std::size_t Inputs>
 class Mixer {
@@ -367,7 +374,17 @@ Stage 1 is merged. From this stage on, `order0` and its output are permanent.
     the first input.
 12. Every input at ±`kStretchMax` and the bit always the opposite, for
     1,000,000 bits: weights reach `kWeightLimit` and stay within it. This is
-    the case UBSan must pass.
+    the case UBSan must pass. *Amended in implementation:* strong inputs
+    cannot take a weight to the limit. Once the weights let the mix reach
+    ±`kStretchMax` the error is 1 and the step rounds to zero; with every
+    input at full strength that happens at a weight of about −0.15, and in
+    every arrangement tried no weight passed 1.0. Weak inputs can: six of
+    stretch 8 that always agree with the bit still leave the mix unsure at
+    the limit, so the weights climb until the clamp stops them. The test
+    does that first, for 1,000,000 bits, and checks every weight is exactly
+    at the limit, then runs the case above from there for 1,000,000 more.
+    That gives UBSan the largest dot product and the largest steps the
+    arithmetic can see, which the case as first written did not reach.
 13. Weight sets are independent: training one leaves the others at their
     initial value.
 
@@ -398,6 +415,11 @@ Stage 1 is merged. From this stage on, `order0` and its output are permanent.
     4.5 KB ten thousand times per codec. Shrink its text until the whole
     suite runs in under 30 seconds in Release and under 5 minutes with
     sanitizers; keep 10,000 mutations. Put both times in the commit message.
+    *Amended in implementation:* `mix6` measured 0.4 µs a byte on `enwik8`,
+    about ten times `order0`, and less on inputs small enough for its tables
+    to stay in cache. The text is a tenth of its old length, 416 bytes; the
+    suite takes 4 seconds in Release and 68 seconds under ASan and UBSan
+    (GCC 13, Debug).
 
 ## Measurements behind the choices
 

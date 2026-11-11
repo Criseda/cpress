@@ -2,10 +2,12 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 1 done, stage 2 in progress.** The container format, command-line
-tool, tests and benchmark runner work end to end. There are two codecs:
-`stored`, which does not compress, and `order0`, the default: a binary
-arithmetic coder driven by an order-0 bitwise model.
+**Status: stage 2 (awaiting review).** The container format, command-line
+tool, tests and benchmark runner work end to end. There are three codecs:
+`stored`, which does not compress; `order0`, a binary arithmetic coder
+driven by an order-0 bitwise model; and `mix6`, the default, which drives
+the same coder with six hashed context models, orders 1 to 6, combined by a
+logistic mixer.
 
 ## Build
 
@@ -32,6 +34,10 @@ cpress codecs
 ```
 
 `cpress` never overwrites an existing file unless you pass `-f`.
+
+`mix6` sizes its model to the input: about 190 KiB for a file of a kilobyte,
+640 MiB for anything over 2 MiB. Decompression needs the same memory as
+compression did.
 
 ## Benchmark
 
@@ -88,12 +94,20 @@ match the header.
 |---|---|---|
 | 0 | `stored` | The original bytes |
 | 1 | `order0` | Arithmetic-coded bits, then 4 flush bytes (experimental until `v0.1`) |
+| 2 | `mix6` | One byte, the model's memory level; then arithmetic-coded bits and 4 flush bytes (experimental until `v0.2`) |
 
-`order0` codes each byte most significant bit first. Every bit is coded with
-a 12-bit probability P(bit = 1) from the model, by a carryless 32-bit binary
-arithmetic coder. The payload is exactly the coder's output; the decoder must
-consume it exactly, and the header's original size may not exceed 4096 times
-the payload size.
+`order0` and `mix6` code each byte most significant bit first. Every bit is
+coded with a 12-bit probability P(bit = 1) from the model, by a carryless
+32-bit binary arithmetic coder. The coded part of the payload is exactly the
+coder's output; the decoder must consume it exactly, and the header's
+original size may not exceed 4096 times its size.
+
+The level byte of `mix6` is 10 to 22; any other value is rejected. Each of
+the model's larger tables has 2^level slots of 32 bytes, which comes to
+192 KiB of tables at level 10 and 640.5 MiB at level 22. The compressor
+picks the smallest level with 2^level at least the input size. The
+decompressor allocates what the archive's level calls for, so the level can
+be chosen differently later without a format change.
 
 ## Layout
 
@@ -102,10 +116,10 @@ the payload size.
 | `include/cpress/` | Public API |
 | `src/` | Container, codec registry, checksum, file I/O |
 | `src/coder/` | Binary arithmetic coder |
-| `src/model/` | The `Predictor` concept and the models |
+| `src/model/` | The `Predictor` concept, the models and the parts they are built from |
 | `src/codec/` | The generic bitwise encode/decode driver |
 | `src/cli/` | The `cpress` tool |
-| `tests/` | Coder, model, round-trip, corruption and mutation tests |
+| `tests/` | Component, golden-archive, round-trip, corruption and mutation tests |
 | `bench/` | The `cpress-bench` runner |
 | `corpus/` | Benchmark inputs (not tracked) |
 | `docs/` | Code style and review checklist |
