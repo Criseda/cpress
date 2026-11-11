@@ -77,7 +77,7 @@ constexpr std::array<Codec, 3> kCodecs{{
      .summary = "no compression (stage 0 placeholder)",
      .encode = &stored_encode,
      .decode = &stored_decode},
-    // Codec 1: order-0 bitwise model. Experimental until stage 1 is tagged.
+    // Codec 1: order-0 bitwise model. Frozen at v0.1: its output is permanent.
     {.id = 1,
      .name = "order0",
      .summary = "order-0 bitwise model",

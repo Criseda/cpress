@@ -111,7 +111,7 @@ match the header.
 | Id | Name | Payload |
 |---|---|---|
 | 0 | `stored` | The original bytes |
-| 1 | `order0` | Arithmetic-coded bits, then 4 flush bytes (experimental until `v0.1`) |
+| 1 | `order0` | Arithmetic-coded bits, then 4 flush bytes (frozen at `v0.1`) |
 | 2 | `mix6` | One byte, the model's memory level; then arithmetic-coded bits and 4 flush bytes (experimental until `v0.2`) |
 
 `order0` and `mix6` code each byte most significant bit first. Every bit is
