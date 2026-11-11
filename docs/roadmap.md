@@ -67,6 +67,8 @@ chosen by the previous byte; a fixed learning rate.
 
 ## Stage 3: lpaq-class model
 
+Brief: [stage-3.md](stage-3.md).
+
 - **Bit-history states:** each context slot holds a small state summarising
   the recent bits seen there, instead of a single probability. The state
   table is designed here and generated at compile time, not copied.
@@ -79,17 +81,23 @@ chosen by the previous byte; a fixed learning rate.
 
 **Exit:** 20 MB or better. Stretch: 18.0 MB, the size lpaq9m reaches.
 
-**Open questions for the brief:** state design (counts, recency, how states
-age); how collisions are detected and slots replaced.
+The brief settles what this section left open, by measurement: a state is a
+pair of counts, with the opposite count halved when the bit changes and no
+record of recency; a slot carries an 8-bit check, four slots share a 64-byte
+bucket, and the least-trained is replaced. Word contexts are two: the
+current word, and it with the word before. A prototype of the design
+measured 19.69 MB.
 
 ## Stage 4: performance
 
 No change to compressed size beyond 0.1%. The work is making the same model
 fast.
 
-- **Cache-line buckets:** one 64-byte bucket serves a whole half-byte of
-  predictions, so a model costs one cache miss per nibble instead of one per
-  bit. Buckets carry a checksum for collision detection.
+- **Cache-line alignment:** stage 3's 64-byte buckets, which already carry
+  the checks that detect collisions, are aligned to cache lines, so each
+  table costs one cache miss per nibble instead of up to two. The buckets
+  moved to stage 3 because their layout changes predictions; alignment does
+  not.
 - **Prefetching** the next buckets at each nibble boundary.
 - **SIMD mixer:** the dot product and weight update in AVX2, with a scalar
   path that produces identical results. Integer SIMD only.

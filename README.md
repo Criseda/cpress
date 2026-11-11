@@ -176,4 +176,5 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/roadmap.md](docs/roadmap.md) | Every stage in detail, with exit criteria |
 | [docs/stage-1.md](docs/stage-1.md) | The brief for stage 1 |
 | [docs/stage-2.md](docs/stage-2.md) | The brief for stage 2 |
+| [docs/stage-3.md](docs/stage-3.md) | The brief for stage 3 |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
