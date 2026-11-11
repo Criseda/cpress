@@ -2,7 +2,7 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 2 done, tagged `v0.2`; stage 3 implemented, not yet tagged.**
+**Status: stage 3 done, tagged `v0.3`; stage 4 is next.**
 The container format, command-line tool, tests and benchmark runner work end
 to end. There are four codecs: `stored`, which does not compress; `order0`, a
 binary arithmetic coder driven by an order-0 bitwise model; `mix6`, which
@@ -60,7 +60,7 @@ run to run on this machine.
 
 | Codec | Commit | Size (bytes) | Bits/byte | Compress ns/B | Decompress ns/B | Peak MiB |
 |---|---|---|---|---|---|---|
-| `mix9` | `9362c80` | 19,687,838 | 1.575 | 778.9 | 825.7 | 1194.2 |
+| `mix9` | `v0.3` | 19,687,838 | 1.575 | 778.9 | 825.7 | 1194.2 |
 | `mix9`, `kMaxLevel` 22 | experiment, not committed | 19,849,694 | 1.588 | – | – | – |
 | `mix9`, no match model | experiment, not committed | 20,323,230 | 1.626 | – | – | – |
 | `mix6` | `v0.2` | 22,527,170 | 1.802 | 381.5 | 402.5 | 856.8 |
@@ -69,12 +69,10 @@ run to run on this machine.
 | `order0` | `v0.1` | 61,263,585 | 4.901 | 31.0 | 45.5 | 254.4 |
 | `order0`, adaptation shift 4 | experiment, not committed | 61,947,984 | 4.956 | – | – | – |
 
-The `mix9` row was measured at `9362c80` on the `stage-3` branch, before
-the stage was merged or tagged; `mix9` is experimental until `v0.3`. The
-other shipped rows were measured at `0eb8c7d` and `1aea9b1`, on the
-`stage-2` and `stage-1` branches, before each stage was merged. Their model
-and coder code is identical to the tagged code, which makes the same
-archives.
+The shipped rows were measured at `9362c80`, `0eb8c7d` and `1aea9b1`, on
+the `stage-3`, `stage-2` and `stage-1` branches, before each stage was
+merged. Their model and coder code is identical to the tagged code, which
+makes the same archives.
 
 `mix9` is the stage 3 codec; its target was 20 MB or better. The prototype
 in its brief measured 19,687,808 bytes of ideal code length; the archive
@@ -146,7 +144,7 @@ match the header.
 | 0 | `stored` | The original bytes |
 | 1 | `order0` | Arithmetic-coded bits, then 4 flush bytes (frozen at `v0.1`) |
 | 2 | `mix6` | One byte, the model's memory level; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.2`) |
-| 3 | `mix9` | As `mix6`, with a level of 10 to 23 (experimental until `v0.3`) |
+| 3 | `mix9` | As `mix6`, with a level of 10 to 23 (frozen at `v0.3`) |
 
 `order0`, `mix6` and `mix9` code each byte most significant bit first. Every bit is
 coded with a 12-bit probability P(bit = 1) from the model, by a carryless
@@ -199,7 +197,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 0 | Harness: container, CLI, tests, benchmark | done |
 | 1 | Binary arithmetic coder + order-0 model | done: 61.3 MB (target 64 MB or better) |
 | 2 | Hashed order 1–6 models + logistic mixer | done: 22.5 MB (target under 25 MB) |
-| 3 | Bit-history states, probability maps, match model | 20 MB or better |
+| 3 | Bit-history states, probability maps, match model | done: 19.7 MB (target 20 MB or better) |
 | 4 | Cache-aware tables, prefetching, SIMD mixer | same size at 870 ns/byte or better |
 | 5 | Market data: order-book-aware model for exchange feeds | beat column-split + zstd |
 | 6 | Write-up and benchmark submission | |

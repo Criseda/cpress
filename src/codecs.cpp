@@ -117,7 +117,7 @@ constexpr std::array<Codec, 4> kCodecs{{
      .encode = &levelled_encode<model::Mix6, kMix6Name>,
      .decode = &levelled_decode<model::Mix6, kMix6Name>},
     // Codec 3: orders 1 to 6, words and a match model, mixed and refined.
-    // Experimental until stage 3 is tagged v0.3.
+    // Frozen at v0.3: its output is permanent.
     {.id = 3,
      .name = kMix9Name,
      .summary = "bit histories, match model, word contexts, APM",

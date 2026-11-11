@@ -11,7 +11,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | 0 | Harness | Round trip and benchmark work | done |
 | 1 | Arithmetic coder + order-0 model | 64 MB or better (61.3 MB) | done |
 | 2 | Context mixing | under 25 MB (22.5 MB) | done |
-| 3 | lpaq-class model | 20 MB or better | 3–4 weeks |
+| 3 | lpaq-class model | 20 MB or better (19.7 MB) | done |
 | 4 | Performance | same size at 870 ns/byte or better | 3–4 weeks |
 | 5 | Market data | beat column-split + zstd | 6–8 weeks |
 | 6 | Release | write-up published | 2 weeks |
@@ -65,7 +65,7 @@ The brief settles what this section left open, by measurement: a Fibonacci
 hash to a 32-byte slot of sixteen counters per nibble; 256 weight sets,
 chosen by the previous byte; a fixed learning rate.
 
-## Stage 3: lpaq-class model
+## Stage 3: lpaq-class model (done)
 
 Brief: [stage-3.md](stage-3.md).
 
