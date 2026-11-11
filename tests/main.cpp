@@ -18,6 +18,7 @@ int main(int argc, char** argv) {
     const auto files = arguments.subspan(std::min<std::size_t>(arguments.size(), 1));
     run_coder_tests();
     run_order0_tests();
+    run_golden_tests();
     run_roundtrip_tests(files);
 
     std::cout << g_checks << " checks, " << g_failures << " failed\n";
