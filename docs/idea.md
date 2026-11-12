@@ -93,8 +93,12 @@ around a microsecond per byte.
 - **Topping the text benchmark.** The leaders are years of tuning on one file
   and run for days.
 - **Replacing 7-Zip.** No archive of many files, no window, no shell menu.
-- **Fast decompression.** Context mixing is symmetric: decoding costs as much
-  as encoding. This is an archival tool.
+- **Fast decompression.** Context mixing is nearly symmetric: the decoder
+  runs the same model, bit for bit, so it does the same work. The one
+  difference is in the encoder's favour. It has the whole input, so it can
+  fetch the memory the next byte will touch before the model asks for it;
+  the decoder can only guess the next byte (stage 4). Decoding costs at
+  least as much as encoding. This is an archival tool.
 - **Neural mixers before the classical design is finished.** They come after
   stage 5, if at all.
 

@@ -1,7 +1,11 @@
 #include "platform.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdio>
+#include <fstream>
+#include <limits>
+#include <optional>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -13,6 +17,9 @@
 // psapi.h must come after windows.h.
 #include <psapi.h>
 #else
+#ifdef __linux__
+#include <sched.h>
+#endif
 #include <spawn.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
@@ -68,6 +75,21 @@ std::uint64_t peak_memory_bytes() {
     counters.cb = sizeof counters;
     if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters) == 0) return 0;
     return static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
+}
+
+bool peak_memory_omits_large_pages() {
+    return true;
+}
+
+std::uint64_t huge_page_bytes_faulted() {
+    return 0;
+}
+
+bool pin_to_cpu(int cpu) {
+    // One bit per logical processor of the process's group.
+    if (cpu < 0 || cpu >= std::numeric_limits<DWORD_PTR>::digits) return false;
+    const DWORD_PTR mask = DWORD_PTR{1} << cpu;
+    return SetProcessAffinityMask(GetCurrentProcess(), mask) != 0;
 }
 
 std::filesystem::path self_path(const char* argv0) {
@@ -133,6 +155,10 @@ int run_process(const std::filesystem::path& exe, const std::vector<std::string>
 
 const char* const kNullDevice = "/dev/null";
 
+bool peak_memory_omits_large_pages() {
+    return false;
+}
+
 std::uint64_t peak_memory_bytes() {
     rusage usage{};
     if (getrusage(RUSAGE_SELF, &usage) != 0) return 0;
@@ -143,6 +169,48 @@ std::uint64_t peak_memory_bytes() {
     return max_rss * 1024;  // kibibytes
 #endif
 }
+
+#ifdef __linux__
+namespace {
+
+// A transparent huge page on x86-64 and on ARM64 with 4 KiB base pages.
+constexpr std::uint64_t kHugePageBytes = std::uint64_t{2} << 20;
+
+// The value of `name` in /proc/vmstat, or nothing if it is not there.
+std::optional<std::uint64_t> vmstat(std::string_view name) {
+    std::ifstream file("/proc/vmstat");
+    std::string key;
+    std::uint64_t value = 0;
+    while (file >> key >> value) {
+        if (key == name) return value;
+    }
+    return {};
+}
+
+}  // namespace
+
+std::uint64_t huge_page_bytes_faulted() {
+    return vmstat("thp_fault_alloc").value_or(0) * kHugePageBytes;
+}
+
+// The process has one thread when this is called, so pinning the calling
+// thread pins the process.
+bool pin_to_cpu(int cpu) {
+    if (cpu < 0 || cpu >= CPU_SETSIZE) return false;
+    cpu_set_t set{};
+    CPU_ZERO(&set);
+    CPU_SET(static_cast<std::size_t>(cpu), &set);
+    return sched_setaffinity(0, sizeof set, &set) == 0;
+}
+#else
+std::uint64_t huge_page_bytes_faulted() {
+    return 0;
+}
+
+bool pin_to_cpu(int /*cpu*/) {
+    return false;
+}
+#endif
 
 std::filesystem::path self_path(const char* argv0) {
     std::error_code ec;

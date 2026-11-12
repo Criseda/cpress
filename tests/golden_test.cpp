@@ -7,6 +7,9 @@
 #include "check.hpp"
 
 #include "cpress/cpress.hpp"
+#include "model/mix6.hpp"
+#include "model/order0.hpp"
+#include "model/predictor.hpp"
 
 #include <array>
 #include <cstdint>
@@ -15,6 +18,11 @@
 
 namespace cpress::test {
 namespace {
+
+// The frozen codecs before mix9 take no hints, so their coding loops are
+// exactly what they were when frozen.
+static_assert(!model::Prefetching<model::Order0>);
+static_assert(!model::Prefetching<model::Mix6>);
 
 // Codec 1, order0, frozen when stage 1 was merged. Produced at 5beef5f by:
 //   printf '%s' '<kOrder0Text>' > golden.txt
@@ -53,6 +61,26 @@ constexpr std::array<std::uint8_t, 102> kMix6Archive{
     0xbe, 0x71, 0xc8, 0x6d, 0x86, 0xb3, 0xc7, 0x05, 0x55, 0x0a, 0x6b, 0x1c,
 };
 
+// Codec 3, mix9, frozen at v0.3. Produced from the code tagged v0.3 (at
+// 5fec20a, which adds only documents to it), by:
+//   printf '%s' '<kMix9Text>' > golden.txt
+//   cpress c --codec mix9 golden.txt
+// The payload starts with the level byte, 10 (kMinLevel), at offset 20. The
+// text is too short for the model to learn much, so the archive is thirteen
+// bytes longer than its input.
+constexpr std::uint8_t kMix9Id = 3;
+constexpr std::string_view kMix9Text =
+    "cpress codec 3 (mix9), frozen by stage 3: this text must decode from these bytes forever.";
+constexpr std::array<std::uint8_t, 102> kMix9Archive{
+    0x43, 0x50, 0x52, 0x53, 0x01, 0x03, 0x00, 0x00, 0x59, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xbf, 0x07, 0x68, 0x62, 0x0a, 0x82, 0x48, 0x8f, 0x99, 0xfc, 0xe2, 0xb3, 0xaf, 0x3d,
+    0xe8, 0x4d, 0xce, 0x72, 0x97, 0x19, 0x4e, 0x88, 0xa0, 0x09, 0xf1, 0x6f, 0x03, 0xe5, 0xf8,
+    0xab, 0xf1, 0x10, 0x5a, 0x93, 0xd9, 0x5d, 0xf6, 0xa3, 0xee, 0x08, 0x08, 0x80, 0x59, 0x84,
+    0xb7, 0x30, 0xb1, 0x8b, 0xdc, 0x91, 0xb9, 0x59, 0xf6, 0xde, 0x99, 0x6d, 0xe2, 0xf1, 0x67,
+    0xc2, 0xee, 0x08, 0xa0, 0x8b, 0xb0, 0xaf, 0x70, 0xe6, 0xb6, 0xdf, 0x45, 0xaf, 0x1b, 0xa7,
+    0xc3, 0xc6, 0xa8, 0xcf, 0x4c, 0x26, 0xe7, 0x69, 0x48, 0x86, 0x84, 0xbb,
+};
+
 // The archive decodes to its text, and the text compresses to exactly the
 // archive.
 void check_golden_archive(std::uint8_t codec_id, std::string_view text_view,
@@ -76,6 +104,7 @@ void check_golden_archive(std::uint8_t codec_id, std::string_view text_view,
 void run_golden_tests() {
     check_golden_archive(kOrder0Id, kOrder0Text, kOrder0Archive);
     check_golden_archive(kMix6Id, kMix6Text, kMix6Archive);
+    check_golden_archive(kMix9Id, kMix9Text, kMix9Archive);
 }
 
 }  // namespace cpress::test

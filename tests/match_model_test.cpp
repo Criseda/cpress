@@ -1,5 +1,6 @@
-// MatchModel tests: a repeat is predicted to its end, a wrong bit ends the
-// match for its byte, and nothing older than the buffer is used.
+// MatchModel tests: a repeat is predicted to its end, and so are the bytes
+// the decoder guesses from it; a wrong bit ends the match for its byte, and
+// nothing older than the buffer is used.
 #include "check.hpp"
 
 #include "model/match_model.hpp"
@@ -84,6 +85,34 @@ void test_predicts_a_repeat_to_its_end() {
     CHECK(top_class == MatchModel::kMixerContexts - 1);
 }
 
+// The guess the decoder prefetches for. A text, then the text again: at
+// every byte boundary from the kMinLength-th byte of the second copy on, a
+// match runs, predicted_byte(0) is the byte about to come and
+// predicted_byte(1) the one after it.
+void test_predicted_bytes_are_the_repeat() {
+    constexpr std::string_view kText =
+        "The decoder cannot know the next byte, but while a match runs it can guess "
+        "it, and the byte after it, from what followed last time.";
+    const auto byte = [&](std::size_t i) { return static_cast<std::uint8_t>(kText[i]); };
+    Driven driven{.model = MatchModel(kBufferBits, kHashBits)};
+    feed(driven, kText);
+
+    bool running = true;
+    bool guessed = true;
+    for (std::size_t i = 0; i < kText.size(); ++i) {
+        if (i >= MatchModel::kMinLength) {
+            running = running && driven.model.length() > 0;
+            guessed = guessed && driven.model.predicted_byte(0) == std::uint32_t{byte(i)};
+            if (i + 1 < kText.size()) {
+                guessed = guessed && driven.model.predicted_byte(1) == std::uint32_t{byte(i + 1)};
+            }
+        }
+        (void)feed_byte(driven, byte(i));
+    }
+    CHECK(running);
+    CHECK(guessed);
+}
+
 // Three pieces. The third follows the second until "middle", where the
 // second had 'P' and the third has 'p'. They differ in their third bit, so
 // two bits are predicted rightly, the third wrongly, and the rest of the
@@ -163,6 +192,7 @@ void test_verification_stops_at_the_oldest_byte() {
 
 void run_match_model_tests() {
     test_predicts_a_repeat_to_its_end();
+    test_predicted_bytes_are_the_repeat();
     test_a_wrong_bit_ends_the_match();
     test_nothing_older_than_the_buffer_is_used();
     test_verification_stops_at_the_oldest_byte();

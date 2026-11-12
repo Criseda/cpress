@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
     run_mix6_tests();
     run_state_table_tests();
     run_probability_map_tests();
+    run_table_allocator_tests();
     run_history_table_tests();
     run_match_model_tests();
     run_apm_tests();

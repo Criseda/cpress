@@ -92,6 +92,10 @@ measured 19.69 MB.
 
 Brief: [stage-4.md](stage-4.md).
 
+Status: implemented on the `stage-4` branch, same archive, both targets
+met. On Linux, compression is 32% faster and decompression 18%; on
+Windows, 40% and 23%. The README has the rows.
+
 The same model, faster, with codec 3's archives unchanged byte for byte.
 
 - **Large pages** for the model's tables, where the operating system grants

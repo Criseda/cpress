@@ -22,7 +22,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Warning flags shared by every target.
 add_library(cpress_warnings INTERFACE)
 if(MSVC)
-    target_compile_options(cpress_warnings INTERFACE /W4 /permissive- /utf-8)
+    # /wd5030: an attribute for other compilers, such as [[gnu::noinline]],
+    # is ignored, as the standard says, without a warning. GCC and Clang
+    # still warn about one that none of them knows.
+    target_compile_options(cpress_warnings INTERFACE /W4 /permissive- /utf-8 /wd5030)
     if(CPRESS_WERROR)
         target_compile_options(cpress_warnings INTERFACE /WX)
     endif()
@@ -43,12 +46,14 @@ if(CPRESS_SANITIZE)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-# Core library: container format, codec registry, checksum, file I/O.
+# Core library: container format, codec registry, checksum, file I/O, and
+# the memory behind the models' large tables.
 add_library(cpress_core STATIC
     src/codecs.cpp
     src/container.cpp
     src/crc32.cpp
-    src/io.cpp)
+    src/io.cpp
+    src/table_memory.cpp)
 target_include_directories(cpress_core PUBLIC include PRIVATE src)
 target_link_libraries(cpress_core PRIVATE cpress_warnings)
 
@@ -59,6 +64,8 @@ target_link_libraries(cpress PRIVATE cpress_core cpress_warnings)
 
 # Benchmark runner.
 add_executable(cpress-bench bench/bench.cpp bench/platform.cpp)
+# src/ for model/table_allocator.hpp: how much memory went on large pages.
+target_include_directories(cpress-bench PRIVATE src)
 target_link_libraries(cpress-bench PRIVATE cpress_core cpress_warnings)
 if(WIN32)
     target_link_libraries(cpress-bench PRIVATE psapi)
@@ -82,7 +89,8 @@ add_executable(cpress-tests
     tests/order0_test.cpp
     tests/probability_map_test.cpp
     tests/roundtrip.cpp
-    tests/state_table_test.cpp)
+    tests/state_table_test.cpp
+    tests/table_allocator_test.cpp)
 target_include_directories(cpress-tests PRIVATE src)
 target_link_libraries(cpress-tests PRIVATE cpress_core cpress_warnings)
 add_test(NAME cpress-tests COMMAND cpress-tests)

@@ -2,7 +2,10 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 3 done, tagged `v0.3`; stage 4 is next.**
+**Status: stage 3 done, tagged `v0.3`. Stage 4 is implemented on the
+`stage-4` branch and meets its targets (see
+[Results](#stage-4-the-same-archive-faster)); it is not yet merged or
+tagged.**
 The container format, command-line tool, tests and benchmark runner work end
 to end. There are four codecs: `stored`, which does not compress; `order0`, a
 binary arithmetic coder driven by an order-0 bitwise model; `mix6`, which
@@ -45,12 +48,22 @@ Decompression needs the same memory as compression did.
 
 ```
 cpress-bench corpus/enwik8
+cpress-bench --cpu 2 --repeat 3 corpus/enwik8
 ```
 
 Each file is compressed, decompressed and verified in its own process, then
-one row is appended to `bench-results.csv`: git commit, codec, sizes, bits
-per byte, nanoseconds per byte each way, and peak memory. See
-[corpus/README.md](corpus/README.md) for where to get the input files.
+one row is appended to `bench-results.csv`: git commit, codec, sizes, the
+archive's CRC-32, bits per byte, nanoseconds per byte each way, the number
+of repeats, peak memory, and how much of each model was on large pages. See [corpus/README.md](corpus/README.md) for
+where to get the input files.
+
+Timings vary by several percent from run to run. `--cpu N` pins the
+measuring process to logical processor N, which keeps it off the slower
+cores of a processor that has two kinds; `--repeat K` runs the round trip K
+times and reports the fastest of each direction. Compare rows only with
+rows from the same sitting. A `bench-results.csv` written by an older
+version has other columns, and the benchmark will not append to it: move it
+aside.
 
 ## Results
 
@@ -73,6 +86,83 @@ The shipped rows were measured at `9362c80`, `0eb8c7d` and `1aea9b1`, on
 the `stage-3`, `stage-2` and `stage-1` branches, before each stage was
 merged. Their model and coder code is identical to the tagged code, which
 makes the same archives.
+
+The `mix9` archive of `enwik8` has CRC-32 `6ee44655`, on MSVC and GCC
+alike. Codec 3 is frozen, so every later commit must make exactly this
+archive; `cpress-bench` prints the CRC-32 of each archive it makes. Every
+stage 4 row below made it.
+
+### Stage 4: the same archive, faster
+
+`cpress-bench --cpu 2 --repeat 3 corpus/enwik8`: pinned to one logical
+processor, the fastest of three runs, the builds alternated and each run
+twice; the faster of the two is shown. i9-12900K. Linux: Ubuntu 24.04 under
+WSL 2, GCC 13.3, transparent huge pages on `madvise`. Windows: Windows 11,
+MSVC 19.51, with the "Lock pages in memory" privilege. Both put 980 MiB of
+the model on large pages. `3aa6395` has v0.3's model and coder with stage
+4's benchmark; `9d35533` is stage 4.
+
+| Build | Commit | Compress ns/B | Decompress ns/B | Change |
+|---|---|---|---|---|
+| Linux, v0.3 model | `3aa6395` | 695.8 | 727.0 | |
+| Linux, stage 4 | `9d35533` | 472.6 | 599.1 | −32.1% / −17.6% |
+| Windows, v0.3 model | `3aa6395` | 756.8 | 750.4 | |
+| Windows, stage 4 | `9d35533` | 457.9 | 579.9 | −39.5% / −22.7% |
+
+Linux from 15:08 to 15:34 UTC, Windows from 15:47 to 16:14, 12 November
+2026. The stage's targets were 25% faster compressing and 10% faster
+decompressing on Linux: **both are met.** `6eda504`, the commit after,
+changes no model code that runs in a release build.
+
+The first rows of this stage, at `c4d94df`, measured −26% / −7% on Linux.
+Two things were wrong with them. GCC 13 inlined `Mix9::update()` into both
+coding loops once they also called the hints, and the larger loops were
+about 10% slower each way; `9d35533` keeps it out of line (stage 4 brief,
+section 3). And the Windows rows were labelled "without large pages":
+the account holds the privilege, `table_memory.cpp` enables it, and they
+had them. The benchmark now reports how much of the model was on large
+pages, so a row cannot be mislabelled that way again.
+
+**Each technique alone,** `6eda504` with one line changed, not committed;
+Linux, one sitting, 16:25 to 16:51 UTC, `--repeat 2`; the v0.3 row is the
+faster of one run before the others and one after:
+
+| Build | Compress ns/B | Decompress ns/B | Change |
+|---|---|---|---|
+| v0.3 model, `3aa6395` | 702.3 | 739.3 | |
+| Large pages alone (no hints) | 623.6 | 667.7 | −11.2% / −9.7% |
+| Hints alone (large pages refused) | 573.1 | 729.1 | −18.4% / −1.4% |
+| Large pages and look-ahead, no guess | 463.8 | 661.5 | −34.0% / −10.5% |
+| Stage 4, `6eda504` | 459.2 | 604.4 | −34.6% / −18.2% |
+
+The encoder's look-ahead is the larger part of compression's gain. The
+decoder's guess is worth 8.6% once the tables are on large pages, and
+almost nothing without them: a prefetch whose address misses the
+processor's page cache still waits for the page walk, and under WSL 2 that
+walk crosses two page tables. That is an explanation, not a measurement.
+
+**Where the time goes.** Levels 12 and 16 fit every history table in the
+caches; they compress worse and make other archives, so they are a
+measurement, never a configuration (stage 4 brief, section 4). Built with
+`kMaxLevel` lowered; Linux, the sitting of the first table, level 23 at
+`--repeat 3` and the others at `--repeat 2`:
+
+| Level | Build | Size (bytes) | Compress ns/B | Decompress ns/B |
+|---|---|---|---|---|
+| 23 | v0.3 model | 19,687,838 | 695.8 | 727.0 |
+| 23 | stage 4 | 19,687,838 | 472.6 | 599.1 |
+| 16 | v0.3 model | 22,996,218 | 502.6 | 545.3 |
+| 16 | stage 4 | 22,996,218 | 467.7 | 534.2 |
+| 12 | v0.3 model | 30,228,770 | 464.6 | 507.0 |
+| 12 | stage 4 | 30,228,770 | 453.4 | 487.4 |
+
+At v0.3, compressing at level 23 took 231 ns/byte more than at level 12:
+about a third of the time was waiting for memory. After stage 4 the gap is
+19 ns, 4%; compression is bound by computation, as the brief expected.
+Decompression's gap shrinks from 220 ns to 112: the decoder knows the next
+byte only when the match model guesses it rightly, so a fifth of its time
+is still waiting. Stage 4 is no slower than v0.3 where there is nothing to
+wait for, so the hints cost less than they save even then.
 
 `mix9` is the stage 3 codec; its target was 20 MB or better. The prototype
 in its brief measured 19,687,808 bytes of ideal code length; the archive
@@ -198,7 +288,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 1 | Binary arithmetic coder + order-0 model | done: 61.3 MB (target 64 MB or better) |
 | 2 | Hashed order 1–6 models + logistic mixer | done: 22.5 MB (target under 25 MB) |
 | 3 | Bit-history states, probability maps, match model | done: 19.7 MB (target 20 MB or better) |
-| 4 | Large pages, prefetching ahead; same archives | compress 25%, decompress 10% faster |
+| 4 | Large pages, prefetching ahead; same archives | on `stage-4`: same archive, compress 32% faster, decompress 18% (target 25% and 10%) |
 | 5 | Market data: order-book-aware model for exchange feeds | beat column-split + zstd |
 | 6 | Write-up and benchmark submission | |
 

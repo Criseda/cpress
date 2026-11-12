@@ -29,8 +29,24 @@
 // Memory: set by the level, kMinLevel to kMaxLevel; see memory_bytes().
 // Each history table has 2^level slots of 16 bytes, except orders 1 and 2,
 // which have too few contexts to use more than 2^14 and 2^22. The match
-// model's buffer is as large as one history table. The two APMs, the mixer and the maps add
-// a fixed 4.2 MiB, most of it the second APM.
+// model's buffer is as large as one history table. The two APMs, the mixer
+// and the maps add a fixed 4.2 MiB, most of it the second APM. The tables,
+// the match model and the APMs are on large pages where the platform grants
+// them (table_allocator.hpp).
+//
+// Why look ahead. Each byte selects sixteen buckets, two per history table,
+// and a match model entry, at places that depend on the byte before it, in
+// tables far larger than the cache. Waiting for them was about 40% of the
+// time at v0.3. A hint can fetch them early, if something knows the byte
+// before the model does.
+// prefetch_after(byte, next) fetches what the byte after `byte` will select,
+// computed from a copy of the model's state by the functions select_slots()
+// uses, so the two cannot disagree. The encoder has the whole input and
+// gives it the true bytes, a whole byte before the buckets are needed. The
+// decoder cannot know the next byte, but a running match predicts it, and
+// prefetch_from_match() fetches for that guess. A wrong guess fetches lines
+// nobody reads: a little memory traffic, never a changed prediction, since
+// a hint writes nothing and reads nothing the model uses.
 //
 // Update rule: every map, table, the match model, the mixer's selected
 // weights and the APMs' nearer points learn each bit; see each component.
@@ -97,6 +113,22 @@ inline constexpr std::uint64_t kWordKey2 = 0xD6E8FEB86659FD93;   // the bigram t
 [[nodiscard]] constexpr std::uint64_t bigram_key(std::uint64_t word,
                                                  std::uint64_t previous) noexcept {
     return mix(((word + (previous * kHashMultiplier)) * kWordKey2) + 2);
+}
+
+// The words so far, as hashes.
+struct Words {
+    std::uint64_t word = 0;      // the current word; 0 between words
+    std::uint64_t previous = 0;  // the last complete word
+};
+
+// The words after `byte`, which extends the current word or ends it.
+[[nodiscard]] constexpr Words next_words(Words words, std::uint32_t byte) noexcept {
+    if (is_letter(byte)) {
+        return {.word = (words.word + lowercase(byte) + 1) * kWordMultiplier,
+                .previous = words.previous};
+    }
+    if (words.word != 0) return {.word = 0, .previous = words.word};
+    return words;
 }
 
 }  // namespace words
@@ -176,6 +208,49 @@ public:
         return bytes;
     }
 
+    // What a byte's table keys are made of, besides the marker: the bytes
+    // before it, the words they spell, and the two word keys, which change
+    // only from byte to byte and so are kept rather than derived per nibble.
+    // A context is the initial one or the result of next_context().
+    struct ByteContext {
+        std::uint64_t history = 0;  // the last 8 bytes, newest in the low byte
+        words::Words words;
+        std::uint64_t word_key = words::word_key(0);         // the word table's, before the marker
+        std::uint64_t bigram_key = words::bigram_key(0, 0);  // the bigram table's, likewise
+    };
+
+    // The context of the byte after `byte`, if `context` is the context of
+    // `byte`. The word keys are derived from the words here and nowhere else.
+    [[nodiscard]] static constexpr ByteContext next_context(const ByteContext& context,
+                                                            std::uint32_t byte) noexcept {
+        assert(byte <= 0xFF);
+        const words::Words next = words::next_words(context.words, byte);
+        return {.history = (context.history << 8) | byte,
+                .words = next,
+                .word_key = words::word_key(next.word),
+                .bigram_key = words::bigram_key(next.word, next.previous)};
+    }
+
+    // The key of every history table in `context`, for the nibble `marker`
+    // names: orders 1 to kOrders, then word and bigram.
+    [[nodiscard]] static constexpr std::array<std::uint64_t, kTables> table_keys(
+        const ByteContext& context, std::uint32_t marker) noexcept {
+        std::array<std::uint64_t, kTables> keys{};
+        for (std::size_t i = 0; i < kOrderTables; ++i) {
+            keys[i] = context_key(context.history, static_cast<int>(i) + 1, marker);
+        }
+        keys[kWordTable] = with_marker(context.word_key, marker);
+        keys[kBigramTable] = with_marker(context.bigram_key, marker);
+        return keys;
+    }
+
+    // The marker of the second nibble of `byte`: the node its first nibble
+    // ends on (context_key()).
+    [[nodiscard]] static constexpr std::uint32_t second_nibble_marker(std::uint32_t byte) noexcept {
+        assert(byte <= 0xFF);
+        return kNibbleDone + (byte >> 4);
+    }
+
     // Allocates everything for `level`, in [kMinLevel, kMaxLevel]. Throws
     // std::bad_alloc if there is no memory.
     explicit Mix9(int level)
@@ -198,14 +273,19 @@ public:
 
         // Each term is in [kProbMin, kProbMax], so their weighted mean is.
         const std::int32_t mixed_st = stretch(mixed);
-        const std::uint32_t previous_byte = static_cast<std::uint32_t>(history_) & 0xFF;
+        const std::uint32_t previous_byte = static_cast<std::uint32_t>(context_.history) & 0xFF;
         const std::uint32_t refined = by_partial_byte_.refine(mixed_st, partial_);
         const std::uint32_t refined_by_previous =
             by_previous_byte_.refine(mixed_st, partial_ + (kByteDone * previous_byte));
         return (mixed + refined + (2 * refined_by_previous)) / 4;
     }
 
-    void update(int bit) noexcept {
+    // Not inlined, on GCC and Clang. Once both coding loops also call
+    // prefetch_after(), GCC 13 inlines this into each of them, and on enwik8
+    // the larger loops ran about 10% slower each way than with a call here,
+    // even with every table in the cache (stage 4's brief, section 3). MSVC
+    // ignores the attribute; its loops were not slowed.
+    [[gnu::noinline]] void update(int bit) noexcept {
         assert(bit == 0 || bit == 1);
         mixer_.update(bit);  // from its own output, not the refined one
         by_partial_byte_.update(bit);
@@ -230,6 +310,50 @@ public:
         }
         select_slots();
         node_ = 1;
+    }
+
+    // What coding the byte after `byte` will look up, if `byte` is the byte
+    // about to be coded and `next` the one after it: every table's key at
+    // both nibbles of `next`, and the context the match model will hash.
+    struct Lookahead {
+        std::array<std::uint64_t, kTables> first_nibble{};
+        std::array<std::uint64_t, kTables> second_nibble{};
+        ByteContext context;
+    };
+
+    // Computed from a copy of the model's state, by the functions the model
+    // itself selects with.
+    [[nodiscard]] Lookahead lookahead(std::uint32_t byte, std::uint32_t next) const noexcept {
+        const ByteContext after = next_context(context_, byte);
+        return {.first_nibble = table_keys(after, kFirstNibble),
+                .second_nibble = table_keys(after, second_nibble_marker(next)),
+                .context = after};
+    }
+
+    // A hint, and nothing else: fetches what coding the byte after `byte`
+    // will touch, if `byte` is the byte about to be coded and `next` the one
+    // after. Call it at a byte boundary. Changes nothing the model predicts.
+    void prefetch_after(std::uint32_t byte, std::uint32_t next) const noexcept {
+        assert(node_ == 1 && marker_ == kFirstNibble);  // at a byte boundary
+        const Lookahead ahead = lookahead(byte, next);
+        match_.prefetch_after(ahead.context.history);  // read as `byte` ends
+        for (std::size_t i = 0; i < kTables; ++i) tables_[i].prefetch(ahead.first_nibble[i]);
+        for (std::size_t i = 0; i < kTables; ++i) tables_[i].prefetch(ahead.second_nibble[i]);
+    }
+
+    // prefetch_after() with the match model's guess for both bytes, if a
+    // match is running; otherwise nothing. Call it at a byte boundary.
+    void prefetch_from_match() const noexcept {
+        if (match_.length() == 0) return;
+        prefetch_after(match_.predicted_byte(0), match_.predicted_byte(1));
+    }
+
+    // For tests.
+    [[nodiscard]] const ByteContext& context() const noexcept {
+        return context_;
+    }
+    [[nodiscard]] const HistoryTable& table(std::size_t i) const noexcept {
+        return tables_[i];
     }
 
 private:
@@ -262,61 +386,44 @@ private:
         return {(static_cast<void>(Index), make_state_map())...};
     }
 
+    // A word key with a marker, as context_key() builds the key of a byte
+    // context.
+    [[nodiscard]] static constexpr std::uint64_t with_marker(std::uint64_t key,
+                                                             std::uint32_t marker) noexcept {
+        return (key << kMarkerBits) | marker;
+    }
+
     // Points every table at its slot for the nibble about to be coded.
     void select_slots() noexcept {
-        for (std::size_t i = 0; i < kOrderTables; ++i) {
-            tables_[i].select(context_key(history_, static_cast<int>(i) + 1, marker_));
-        }
-        tables_[kWordTable].select(with_marker(word_key_));
-        tables_[kBigramTable].select(with_marker(bigram_key_));
+        const std::array<std::uint64_t, kTables> keys = table_keys(context_, marker_);
+        for (std::size_t i = 0; i < kTables; ++i) tables_[i].select(keys[i]);
     }
 
-    // A word key with the marker of the nibble about to be coded, as
-    // context_key() builds the key of a byte context.
-    [[nodiscard]] std::uint64_t with_marker(std::uint64_t key) const noexcept {
-        return (key << kMarkerBits) | marker_;
-    }
-
-    // A whole byte has been coded: it joins the history, the words and the
-    // match model, and picks the weight set for the byte after it, which
-    // depends on the match the byte left running.
+    // A whole byte has been coded: it joins the context and the match model,
+    // and picks the weight set for the byte after it, which depends on the
+    // match the byte left running.
     void push_byte(std::uint32_t byte) noexcept {
-        assert(byte <= 0xFF);
-        history_ = (history_ << 8) | byte;
-        push_word_byte(byte);
-        match_.push_byte(history_);
+        context_ = next_context(context_, byte);
+        match_.push_byte(context_.history);
         mixer_.select((MatchModel::kMixerContexts * byte) + match_.mixer_context());
-    }
-
-    // The byte extends the current word or ends it (see namespace words),
-    // and the two word keys follow.
-    void push_word_byte(std::uint32_t byte) noexcept {
-        if (words::is_letter(byte)) {
-            word_ = (word_ + words::lowercase(byte) + 1) * words::kWordMultiplier;
-        } else if (word_ != 0) {
-            previous_word_ = word_;
-            word_ = 0;
-        }
-        word_key_ = words::word_key(word_);
-        bigram_key_ = words::bigram_key(word_, previous_word_);
     }
 
     std::array<HistoryTable, kTables> tables_;  // orders 1 to kOrders, word, bigram
     std::array<ProbabilityMap, kTables> maps_;  // the state map of each table
     MatchModel match_;
     Mixer<kInputs> mixer_;
-    Apm by_partial_byte_;                          // APM 1
-    Apm by_previous_byte_;                         // APM 2
-    std::uint64_t history_ = 0;                    // the last 8 bytes, newest in the low byte
-    std::uint64_t word_ = 0;                       // the hash of the current word; 0 between words
-    std::uint64_t previous_word_ = 0;              // the hash of the last complete word
-    std::uint64_t word_key_ = words::word_key(0);  // the word table's, before the marker
-    std::uint64_t bigram_key_ = words::bigram_key(0, 0);  // the bigram table's, likewise
+    Apm by_partial_byte_;                  // APM 1
+    Apm by_previous_byte_;                 // APM 2
+    ByteContext context_;                  // of the byte being coded
     std::uint32_t marker_ = kFirstNibble;  // which nibble is being coded; see context_key()
     std::uint32_t node_ = 1;               // position in that nibble's tree, 1 to 15
     std::uint32_t partial_ = 1;            // the byte's bits so far, after a leading 1
 };
 
 static_assert(Predictor<Mix9>);
+// Without this, a hint whose signature drifted would leave Mix9 short of the
+// concept, the coding loops would quietly stop calling it, and every test
+// of the output would still pass.
+static_assert(Prefetching<Mix9>);
 
 }  // namespace cpress::model

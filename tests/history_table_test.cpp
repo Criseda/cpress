@@ -1,11 +1,13 @@
 // HistoryTable tests: a context keeps its slot, the least-trained slot of a
-// full bucket is the one replaced, and every index is in range.
+// full bucket is the one replaced, every index is in range, buckets are
+// cache lines, and prefetch() fetches the bucket select() searches.
 #include "check.hpp"
 
 #include "model/context_table.hpp"
 #include "model/history_table.hpp"
 #include "model/mix9.hpp"
 #include "model/state_table.hpp"
+#include "model/table_allocator.hpp"
 
 #include <algorithm>
 #include <array>
@@ -133,12 +135,44 @@ void test_indices_are_in_range() {
     }
 }
 
+// The first slot of a table is aligned to a cache line, so every bucket is
+// exactly one: at the smallest table and the largest a model asks for.
+void test_buckets_are_cache_lines() {
+    for (const int slot_bits : {HistoryTable::kMinSlotBits, model::Mix9::kMaxLevel}) {
+        const HistoryTable table(slot_bits);
+        CHECK(is_aligned(table.slot_address(0), model::kCacheLineBytes));
+    }
+}
+
+// prefetch(key) fetches bucket_address(key), and select(key) chooses a slot
+// in the bucket at that address, for keys including 0 and all ones. So a
+// prefetch never fetches a bucket other than the one its select reads.
+void test_prefetch_and_select_find_one_bucket() {
+    // NOLINTNEXTLINE(bugprone-random-generator-seed): a fixed seed keeps the test reproducible.
+    std::mt19937_64 rng(11);
+    HistoryTable table(model::Mix9::kMinLevel);
+    bool same = true;
+    auto check_key = [&](std::uint64_t key) {
+        table.select(key);
+        const std::size_t first_way =
+            (table.selected_slot() / HistoryTable::kWays) * HistoryTable::kWays;
+        same = same && table.slot_address(first_way) == table.bucket_address(key);
+    };
+    check_key(0);
+    check_key(1);
+    check_key(kAllOnes);
+    for (int i = 0; i < 10'000; ++i) check_key(rng());
+    CHECK(same);
+}
+
 }  // namespace
 
 void run_history_table_tests() {
     test_a_context_keeps_its_slot();
     test_the_least_trained_slot_is_replaced();
     test_indices_are_in_range();
+    test_buckets_are_cache_lines();
+    test_prefetch_and_select_find_one_bucket();
 }
 
 }  // namespace cpress::test
