@@ -2,7 +2,9 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 3 done, tagged `v0.3`; stage 4 is next.**
+**Status: stage 3 done, tagged `v0.3`. Stage 4 is implemented on the
+`stage-4` branch; compression meets its target, decompression does not yet
+(see [Results](#stage-4-the-same-archive-faster)).**
 The container format, command-line tool, tests and benchmark runner work end
 to end. There are four codecs: `stored`, which does not compress; `order0`, a
 binary arithmetic coder driven by an order-0 bitwise model; `mix6`, which
@@ -86,7 +88,75 @@ makes the same archives.
 
 The `mix9` archive of `enwik8` has CRC-32 `6ee44655`, on MSVC and GCC
 alike. Codec 3 is frozen, so every later commit must make exactly this
-archive; `cpress-bench` prints the CRC-32 of each archive it makes.
+archive; `cpress-bench` prints the CRC-32 of each archive it makes. Every
+stage 4 row below made it.
+
+### Stage 4: the same archive, faster
+
+`cpress-bench --cpu 2 --repeat 3 corpus/enwik8`: pinned to one logical
+processor, the fastest of three runs. i9-12900K. Linux rows: Ubuntu 24.04
+under WSL 2, GCC 13.3, transparent huge pages on `madvise`. Windows rows:
+Windows 11, MSVC 19.51, without the "Lock pages in memory" privilege, so
+without large pages. `3aa6395` has v0.3's model and coder with stage 4's
+benchmark; `c4d94df` is stage 4.
+
+| Build | Commit | Compress ns/B | Decompress ns/B | Change |
+|---|---|---|---|---|
+| Linux, v0.3 model | `3aa6395` | 641.8 | 677.6 | |
+| Linux, stage 4 | `c4d94df` | 474.0 | 629.1 | −26.1% / −7.2% |
+| Windows, v0.3 model | `3aa6395` | 695.8 | 739.2 | |
+| Windows, stage 4, no large pages | `c4d94df` | 446.1 | 571.5 | −35.9% / −22.7% |
+
+The Linux pair is the fastest of two interleaved rows each, from 04:00 to
+04:25 UTC. The stage's targets were 25% faster compressing and 10% faster
+decompressing on Linux. **Compression meets its target; decompression does
+not.** An earlier sitting the same night, below, measured −26.6% / −9.7%.
+On Windows both directions clear their targets by a margin, without large
+pages. The Windows stage 4 row reported a peak working set of 215 MiB
+against the baseline's 1,194 MiB; why was not established. The model
+commits its 980 MiB either way.
+
+**Each technique alone,** one sitting, 02:51 to 03:37 UTC, Linux. The
+experiment rows are `c4d94df` with one line changed and are not committed:
+
+| Build | Compress ns/B | Decompress ns/B | Change |
+|---|---|---|---|
+| v0.3 model, `3aa6395` | 690.9 | 723.9 | |
+| Large pages alone (no hints) | 573.0 | 602.1 | −17.1% / −16.8% |
+| Look-ahead and guessing alone (large pages refused) | 555.3 | 710.0 | −19.6% / −1.9% |
+| Stage 4, `c4d94df` | 506.8 | 654.0 | −26.6% / −9.7% |
+
+The decoder's guess was then tested on its own, interleaved, 03:37 to
+03:59: `c4d94df` decompressed at 624.1 and 626.6 ns/byte, the same build
+without the guess at 660.1 and 655.0. The guess is worth about 5%, as the
+brief expected, and the 654.0 above was a slow run. Results this close are
+at the edge of what the machine can show. In the same test the build
+without the guess, whose encoder is identical, compressed at 423.3 and
+432.6 against 480.9 and 483.1. That is code layout, not the model, and it
+is as large as the effects being measured.
+
+**Where the time goes.** Levels 12 and 16 fit every history table in the
+caches; they compress worse and make other archives, so they are a
+measurement, never a configuration (stage 4 brief, section 4). Built with
+`kMaxLevel` lowered, same sitting as the techniques:
+
+| Level | Build | Size (bytes) | Compress ns/B | Decompress ns/B |
+|---|---|---|---|---|
+| 23 | v0.3 model | 19,687,838 | 690.9 | 723.9 |
+| 23 | stage 4 | 19,687,838 | 506.8 | 654.0 |
+| 16 | v0.3 model | 22,996,218 | 455.1 | 481.4 |
+| 16 | stage 4 | 22,996,218 | 476.5 | 565.7 |
+| 12 | v0.3 model | 30,228,770 | 429.9 | 457.0 |
+| 12 | stage 4 | 30,228,770 | 468.1 | 529.5 |
+
+At v0.3, compressing at level 23 took 261 ns/byte more than at level 12:
+about 38% of the time was waiting for memory. After stage 4 the gap is
+39 ns, about 8%. Compression is now bound by computation, as the brief
+expected. With nothing to wait for, the hints are pure cost: 5% to 9%
+slower compressing at levels 12 and 16, and 16% to 18% slower
+decompressing. That last figure is larger than the hint's own work should
+take, and is the likeliest place to look for the decoder's missing
+percent.
 
 `mix9` is the stage 3 codec; its target was 20 MB or better. The prototype
 in its brief measured 19,687,808 bytes of ideal code length; the archive
@@ -212,7 +282,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 1 | Binary arithmetic coder + order-0 model | done: 61.3 MB (target 64 MB or better) |
 | 2 | Hashed order 1–6 models + logistic mixer | done: 22.5 MB (target under 25 MB) |
 | 3 | Bit-history states, probability maps, match model | done: 19.7 MB (target 20 MB or better) |
-| 4 | Large pages, prefetching ahead; same archives | compress 25%, decompress 10% faster |
+| 4 | Large pages, prefetching ahead; same archives | in progress: same archive, compress 26% faster, decompress 7–10% (target 25% and 10%) |
 | 5 | Market data: order-book-aware model for exchange feeds | beat column-split + zstd |
 | 6 | Write-up and benchmark submission | |
 

@@ -204,12 +204,14 @@ The tables were first to be `std::vector<T, TableAllocator<T>>`. Measured,
 that made the sanitizer suite twice as slow: libstdc++ value-initialises a
 vector with any allocator but `std::allocator` one call per element, which
 an unoptimised build pays for in full. Building a level-10 `Mix9` took
-32 ms under ASan instead of 7, and the mutation test builds thousands, so
-the suite went from about 330 s to about 580 s, over its 5-minute
-budget.
+32 ms under ASan instead of 7, and the mutation test builds thousands:
+the suite took about 580 s, measured while another run shared the
+machine, against 224 s for v0.3's suite run alone. Its budget is 5
+minutes.
 `TableArray` value-initialises in one call, as `std::vector` with
 `std::allocator` does, and the build takes 5 ms; a table never grew, so
-nothing else is lost. (Amended in implementation.)
+nothing else is lost. The stage's suite, with its new tests, takes 286 s
+under ASan + UBSan, run alone. (Amended in implementation.)
 
 - Failing to get large pages is never an error: the model is the same,
   only slower. Running out of memory is still `std::bad_alloc`, which the
@@ -521,13 +523,17 @@ Paired run by run, the guess was 19 to 34 ns faster each time.
       compression at least 25% faster and decompression at least 10%
       faster than `v0.3`, on Linux with GCC, `--repeat 3`, pinned, both
       rows from one sitting. The `cpress-bench` rows in the commit message
-      and the README.
-- [ ] A Windows row, labelled with whether large pages were granted.
-- [ ] One row per technique, each added alone to `v0.3`, for the ablation
+      and the README. *Not met yet:* compression 26.1% faster,
+      decompression 7.2% (9.7% in an earlier sitting); see the README.
+- [x] A Windows row, labelled with whether large pages were granted.
+- [x] One row per technique, each added alone to `v0.3`, for the ablation
       table: large pages, look-ahead, guessing ahead.
-- [ ] The level 12 and level 16 rows (section 4), before and after.
+- [x] The level 12 and level 16 rows (section 4), before and after.
 - [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan.
-- [ ] clang-format clean, clang-tidy clean, no compiler warnings.
+      *MSVC, GCC and ASan + UBSan (GCC) pass locally; Clang is CI-only.*
+- [x] clang-format clean, clang-tidy clean, no compiler warnings. *Tidy
+      was run on Windows, so the Linux block of `table_memory.cpp` was
+      not seen by it.*
 - [ ] README (status, results, roadmap), `docs/roadmap.md`, `docs/idea.md`
       and `CLAUDE.md` updated; tag `v0.4`.
 
