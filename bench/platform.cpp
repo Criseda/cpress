@@ -1,7 +1,9 @@
 #include "platform.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdio>
+#include <limits>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -13,6 +15,9 @@
 // psapi.h must come after windows.h.
 #include <psapi.h>
 #else
+#ifdef __linux__
+#include <sched.h>
+#endif
 #include <spawn.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
@@ -68,6 +73,13 @@ std::uint64_t peak_memory_bytes() {
     counters.cb = sizeof counters;
     if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters) == 0) return 0;
     return static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
+}
+
+bool pin_to_cpu(int cpu) {
+    // One bit per logical processor of the process's group.
+    if (cpu < 0 || cpu >= std::numeric_limits<DWORD_PTR>::digits) return false;
+    const DWORD_PTR mask = DWORD_PTR{1} << cpu;
+    return SetProcessAffinityMask(GetCurrentProcess(), mask) != 0;
 }
 
 std::filesystem::path self_path(const char* argv0) {
@@ -143,6 +155,22 @@ std::uint64_t peak_memory_bytes() {
     return max_rss * 1024;  // kibibytes
 #endif
 }
+
+#ifdef __linux__
+// The process has one thread when this is called, so pinning the calling
+// thread pins the process.
+bool pin_to_cpu(int cpu) {
+    if (cpu < 0 || cpu >= CPU_SETSIZE) return false;
+    cpu_set_t set{};
+    CPU_ZERO(&set);
+    CPU_SET(static_cast<std::size_t>(cpu), &set);
+    return sched_setaffinity(0, sizeof set, &set) == 0;
+}
+#else
+bool pin_to_cpu(int /*cpu*/) {
+    return false;
+}
+#endif
 
 std::filesystem::path self_path(const char* argv0) {
     std::error_code ec;

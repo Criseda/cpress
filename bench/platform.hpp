@@ -1,4 +1,5 @@
-// Small OS layer for the benchmark runner: peak memory, child processes.
+// Small OS layer for the benchmark runner: peak memory, child processes,
+// processor affinity.
 #pragma once
 
 #include <cstdint>
@@ -10,6 +11,11 @@ namespace platform {
 
 // Peak resident memory of this process so far, in bytes.
 std::uint64_t peak_memory_bytes();
+
+// Restricts this process to logical processor `cpu`, so the scheduler
+// cannot move it to a slower core mid-run. Returns false if that processor
+// does not exist or the platform cannot pin (macOS has no such call).
+bool pin_to_cpu(int cpu);
 
 // Absolute path of the running executable. Falls back to `argv0`.
 std::filesystem::path self_path(const char* argv0);

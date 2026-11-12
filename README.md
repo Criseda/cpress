@@ -45,12 +45,22 @@ Decompression needs the same memory as compression did.
 
 ```
 cpress-bench corpus/enwik8
+cpress-bench --cpu 2 --repeat 3 corpus/enwik8
 ```
 
 Each file is compressed, decompressed and verified in its own process, then
-one row is appended to `bench-results.csv`: git commit, codec, sizes, bits
-per byte, nanoseconds per byte each way, and peak memory. See
-[corpus/README.md](corpus/README.md) for where to get the input files.
+one row is appended to `bench-results.csv`: git commit, codec, sizes, the
+archive's CRC-32, bits per byte, nanoseconds per byte each way, the number
+of repeats, and peak memory. See [corpus/README.md](corpus/README.md) for
+where to get the input files.
+
+Timings vary by several percent from run to run. `--cpu N` pins the
+measuring process to logical processor N, which keeps it off the slower
+cores of a processor that has two kinds; `--repeat K` runs the round trip K
+times and reports the fastest of each direction. Compare rows only with
+rows from the same sitting. A `bench-results.csv` written by an older
+version has other columns, and the benchmark will not append to it: move it
+aside.
 
 ## Results
 
@@ -73,6 +83,10 @@ The shipped rows were measured at `9362c80`, `0eb8c7d` and `1aea9b1`, on
 the `stage-3`, `stage-2` and `stage-1` branches, before each stage was
 merged. Their model and coder code is identical to the tagged code, which
 makes the same archives.
+
+The `mix9` archive of `enwik8` has CRC-32 `6ee44655`, on MSVC and GCC
+alike. Codec 3 is frozen, so every later commit must make exactly this
+archive; `cpress-bench` prints the CRC-32 of each archive it makes.
 
 `mix9` is the stage 3 codec; its target was 20 MB or better. The prototype
 in its brief measured 19,687,808 bytes of ideal code length; the archive
