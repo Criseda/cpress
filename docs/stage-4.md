@@ -568,14 +568,16 @@ Paired run by run, the guess was 19 to 34 ns faster each time.
 - [x] One row per technique, each added alone to `v0.3`, for the ablation
       table: large pages, look-ahead, guessing ahead.
 - [x] The level 12 and level 16 rows (section 4), before and after.
-- [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan.
+- [x] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan.
       *MSVC, GCC and ASan + UBSan (GCC, Debug and Release) pass locally;
-      Clang runs only in CI, which has not yet built this branch.*
+      Clang runs only in CI, which passed on the stage's pull request, on
+      Linux and macOS.*
 - [x] clang-format clean, clang-tidy clean, no compiler warnings. *Tidy
       was run on Windows, so the Linux block of `table_memory.cpp` was
       not seen by it.*
-- [ ] README (status, results, roadmap), `docs/roadmap.md`, `docs/idea.md`
-      and `CLAUDE.md` updated; tag `v0.4`.
+- [x] README (status, results, roadmap), `docs/roadmap.md`, `docs/idea.md`
+      and `CLAUDE.md` updated; tag `v0.4`. *Tagged on the stage's merge,
+      `386ae53`.*
 
 ## Suggested commits
 

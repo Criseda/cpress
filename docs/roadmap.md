@@ -12,7 +12,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | 1 | Arithmetic coder + order-0 model | 64 MB or better (61.3 MB) | done |
 | 2 | Context mixing | under 25 MB (22.5 MB) | done |
 | 3 | lpaq-class model | 20 MB or better (19.7 MB) | done |
-| 4 | Performance | same archive; compress 25%, decompress 10% faster | 1.5–2 weeks |
+| 4 | Performance | same archive; compress 25%, decompress 10% faster (32%, 18%) | done |
 | 5 | Market data | beat column-split + zstd | 6–8 weeks |
 | 6 | Release | write-up published | 2 weeks |
 
@@ -88,13 +88,9 @@ bucket, and the least-trained is replaced. Word contexts are two: the
 current word, and it with the word before. A prototype of the design
 measured 19.69 MB.
 
-## Stage 4: performance
+## Stage 4: performance (done)
 
 Brief: [stage-4.md](stage-4.md).
-
-Status: implemented on the `stage-4` branch, same archive, both targets
-met. On Linux, compression is 32% faster and decompression 18%; on
-Windows, 40% and 23%. The README has the rows.
 
 The same model, faster, with codec 3's archives unchanged byte for byte.
 
@@ -106,7 +102,8 @@ The same model, faster, with codec 3's archives unchanged byte for byte.
 - The memory share of the time, measured without hardware counters.
 
 **Exit:** on `enwik8`, compression 25% and decompression 10% faster than
-`v0.3`, with an identical archive.
+`v0.3`, with an identical archive. Measured: 32% and 18% on Linux, 40% and
+23% on Windows; the README has the rows.
 
 The brief settles what this section first planned, by measurement: `v0.3`
 already met the old exit, 870 ns/byte. Aligning buckets and prefetching at

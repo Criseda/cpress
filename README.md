@@ -2,10 +2,7 @@
 
 A lossless compressor built on context mixing, written from scratch in C++20.
 
-**Status: stage 3 done, tagged `v0.3`. Stage 4 is implemented on the
-`stage-4` branch and meets its targets (see
-[Results](#stage-4-the-same-archive-faster)); it is not yet merged or
-tagged.**
+**Status: stage 4 done, tagged `v0.4`; stage 5 is next.**
 The container format, command-line tool, tests and benchmark runner work end
 to end. There are four codecs: `stored`, which does not compress; `order0`, a
 binary arithmetic coder driven by an order-0 bitwise model; `mix6`, which
@@ -100,7 +97,9 @@ twice; the faster of the two is shown. i9-12900K. Linux: Ubuntu 24.04 under
 WSL 2, GCC 13.3, transparent huge pages on `madvise`. Windows: Windows 11,
 MSVC 19.51, with the "Lock pages in memory" privilege. Both put 980 MiB of
 the model on large pages. `3aa6395` has v0.3's model and coder with stage
-4's benchmark; `9d35533` is stage 4.
+4's benchmark; `9d35533` is stage 4. Both are on the `stage-4` branch,
+measured before the stage was merged; `v0.4` is that branch's last commit,
+file for file.
 
 | Build | Commit | Compress ns/B | Decompress ns/B | Change |
 |---|---|---|---|---|
@@ -288,7 +287,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 1 | Binary arithmetic coder + order-0 model | done: 61.3 MB (target 64 MB or better) |
 | 2 | Hashed order 1–6 models + logistic mixer | done: 22.5 MB (target under 25 MB) |
 | 3 | Bit-history states, probability maps, match model | done: 19.7 MB (target 20 MB or better) |
-| 4 | Large pages, prefetching ahead; same archives | on `stage-4`: same archive, compress 32% faster, decompress 18% (target 25% and 10%) |
+| 4 | Large pages, prefetching ahead; same archives | done: same archive, compress 32% faster, decompress 18% (target 25% and 10%) |
 | 5 | Market data: order-book-aware model for exchange feeds | beat column-split + zstd |
 | 6 | Write-up and benchmark submission | |
 
