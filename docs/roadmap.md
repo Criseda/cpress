@@ -12,7 +12,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | 1 | Arithmetic coder + order-0 model | 64 MB or better (61.3 MB) | done |
 | 2 | Context mixing | under 25 MB (22.5 MB) | done |
 | 3 | lpaq-class model | 20 MB or better (19.7 MB) | done |
-| 4 | Performance | same size at 870 ns/byte or better | 3–4 weeks |
+| 4 | Performance | same archive; compress 25%, decompress 10% faster | 1.5–2 weeks |
 | 5 | Market data | beat column-split + zstd | 6–8 weeks |
 | 6 | Release | write-up published | 2 weeks |
 
@@ -90,22 +90,26 @@ measured 19.69 MB.
 
 ## Stage 4: performance
 
-No change to compressed size beyond 0.1%. The work is making the same model
-fast.
+Brief: [stage-4.md](stage-4.md).
 
-- **Cache-line alignment:** stage 3's 64-byte buckets, which already carry
-  the checks that detect collisions, are aligned to cache lines, so each
-  table costs one cache miss per nibble instead of up to two. The buckets
-  moved to stage 3 because their layout changes predictions; alignment does
-  not.
-- **Prefetching** the next buckets at each nibble boundary.
-- **SIMD mixer:** the dot product and weight update in AVX2, with a scalar
-  path that produces identical results. Integer SIMD only.
-- Measurement with hardware counters: cache misses per byte, branch misses.
-- The ratio-against-speed plot and the script that draws it.
+The same model, faster, with codec 3's archives unchanged byte for byte.
 
-**Exit:** 870 ns/byte or better (lpaq9m's benchmark figure) at stage 3's
-size. Stretch: 500 ns/byte.
+- **Large pages** for the model's tables, where the operating system grants
+  them without new privileges.
+- **Prefetching the next byte's slots:** from the input when compressing,
+  which knows it, and from the match model's guess when decompressing.
+- A benchmark that can see a 5% change: pinned, repeated, minimum taken.
+- The memory share of the time, measured without hardware counters.
+
+**Exit:** on `enwik8`, compression 25% and decompression 10% faster than
+`v0.3`, with an identical archive.
+
+The brief settles what this section first planned, by measurement: `v0.3`
+already met the old exit, 870 ns/byte. Aligning buckets and prefetching at
+the nibble boundary gained nothing, and a SIMD mixer could gain little.
+The computation, threads and the old stretch figure, 500 ns/byte, are
+recorded in issue #4 for after 1.0; the ratio-against-speed plot moves to
+stage 6.
 
 ## Stage 5: market data
 
@@ -138,8 +142,9 @@ with the 12,012-message test file, then slices of a full day.
 
 ## Stage 6: release
 
-- The write-up: design, the plot, an ablation table showing what each
-  component is worth, and the market-data result.
+- The write-up: design, the ratio-against-speed plot and the script that
+  draws it, an ablation table showing what each component is worth, and the
+  market-data result.
 - Submission to the Large Text Compression Benchmark (`enwik9`; the
   decompressor's size counts towards the total).
 - Golden archives for every frozen codec.
@@ -153,6 +158,8 @@ Only if the classical design is finished and written up:
 - A recurrent-network mixer, which is how cmix reaches the top of the table
   at several hundred times the running time.
 - Dictionary preprocessing for text.
+- Speed beyond stage 4: the computation, a block-parallel codec, and the
+  rest measured in issue #4.
 - Decoder fuzzing as a permanent CI job.
 
 ## Standing engineering work

@@ -198,7 +198,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 1 | Binary arithmetic coder + order-0 model | done: 61.3 MB (target 64 MB or better) |
 | 2 | Hashed order 1–6 models + logistic mixer | done: 22.5 MB (target under 25 MB) |
 | 3 | Bit-history states, probability maps, match model | done: 19.7 MB (target 20 MB or better) |
-| 4 | Cache-aware tables, prefetching, SIMD mixer | same size at 870 ns/byte or better |
+| 4 | Large pages, prefetching ahead; same archives | compress 25%, decompress 10% faster |
 | 5 | Market data: order-book-aware model for exchange feeds | beat column-split + zstd |
 | 6 | Write-up and benchmark submission | |
 
@@ -211,4 +211,5 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/stage-1.md](docs/stage-1.md) | The brief for stage 1 |
 | [docs/stage-2.md](docs/stage-2.md) | The brief for stage 2 |
 | [docs/stage-3.md](docs/stage-3.md) | The brief for stage 3 |
+| [docs/stage-4.md](docs/stage-4.md) | The brief for stage 4 |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
