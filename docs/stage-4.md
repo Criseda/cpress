@@ -555,18 +555,22 @@ Paired run by run, the guess was 19 to 34 ns faster each time.
 
 ## Exit criteria
 
-- [ ] On `enwik8`, with the archive's size and CRC-32 those of `v0.3`:
+- [x] On `enwik8`, with the archive's size and CRC-32 those of `v0.3`:
       compression at least 25% faster and decompression at least 10%
       faster than `v0.3`, on Linux with GCC, `--repeat 3`, pinned, both
       rows from one sitting. The `cpress-bench` rows in the commit message
-      and the README. *Not met yet:* compression 26.1% faster,
-      decompression 7.2% (9.7% in an earlier sitting); see the README.
+      and the README. *Met at `9d35533`: compression 32.1% faster,
+      decompression 17.6%. The first rows, at `c4d94df`, measured 26.1%
+      and 7.2%, slowed by GCC inlining `update()` (section 3).*
 - [x] A Windows row, labelled with whether large pages were granted.
+      *They were: the account holds the privilege. The first Windows rows
+      said otherwise; the benchmark now reports it (section 1).*
 - [x] One row per technique, each added alone to `v0.3`, for the ablation
       table: large pages, look-ahead, guessing ahead.
 - [x] The level 12 and level 16 rows (section 4), before and after.
 - [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan.
-      *MSVC, GCC and ASan + UBSan (GCC) pass locally; Clang is CI-only.*
+      *MSVC, GCC and ASan + UBSan (GCC, Debug and Release) pass locally;
+      Clang runs only in CI, which has not yet built this branch.*
 - [x] clang-format clean, clang-tidy clean, no compiler warnings. *Tidy
       was run on Windows, so the Linux block of `table_memory.cpp` was
       not seen by it.*
