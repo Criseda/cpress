@@ -27,7 +27,13 @@
 // Otherwise the model says nothing: its input is 0, which a mixer ignores.
 //
 // Memory: 2^buffer_bits bytes of buffer, 4 * 2^hash_bits bytes of hash
-// table, and 4 * kMapContexts bytes of map.
+// table, and 4 * kMapContexts bytes of map. The buffer and the hash table
+// come from TableAllocator, on large pages where the platform grants them.
+//
+// Two things can be known before a byte is coded, for a caller that wants
+// them in the cache early: the hash table entry the byte's push_byte() will
+// read (prefetch_after()), and, while a match runs, a guess at the byte and
+// the one after it (predicted_byte()).
 //
 // Positions are kept modulo 2^32 in the hash table. A stale or aliased
 // position costs compression, never safety: every read goes through the
@@ -44,7 +50,9 @@
 
 #include "model/context_table.hpp"
 #include "model/logistic.hpp"
+#include "model/prefetch.hpp"
 #include "model/probability_map.hpp"
+#include "model/table_allocator.hpp"
 
 #include <algorithm>
 #include <array>
@@ -53,7 +61,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <utility>
-#include <vector>
 
 namespace cpress::model {
 
@@ -147,9 +154,7 @@ public:
         }
         if (position_ < kMinLength) return;
 
-        // The 64-bit product wraps; that is the hash, as in context_table.hpp.
-        const auto slot =
-            static_cast<std::size_t>(((history & kContextMask) * kHashMultiplier) >> hash_shift_);
+        const std::size_t slot = hash_slot(history);
         if (length_ == 0) find_match(positions_[slot]);
         positions_[slot] = static_cast<std::uint32_t>(position_);
     }
@@ -163,10 +168,26 @@ public:
         return 3;
     }
 
-    // For tests.
+    // Starts loading the hash table entry that push_byte(history) will read
+    // and write into the cache. A hint: it changes nothing in the model.
+    void prefetch_after(std::uint64_t history) const noexcept {
+        model::prefetch(&positions_[hash_slot(history)]);
+    }
+
+    // How many bytes the running match has agreed, or 0 if none is running.
     [[nodiscard]] std::uint32_t length() const noexcept {
         return length_;
     }
+
+    // A guess, while a match runs, at the byte `ahead` bytes on from the one
+    // being coded: the byte that followed last time. Read at a byte
+    // boundary, 0 is the byte about to be coded and 1 the one after it.
+    // Meaningless when length() is 0; harmless to read all the same.
+    [[nodiscard]] std::uint32_t predicted_byte(std::uint32_t ahead) const noexcept {
+        return byte_at(pointer_ + ahead);
+    }
+
+    // For tests.
     // The bit the last predict() expected. Only meaningful if length() was
     // more than 0 then.
     [[nodiscard]] std::uint32_t expected_bit() const noexcept {
@@ -188,6 +209,13 @@ private:
         p22.fill(kP22One / 2);
         return p22;
     }();
+
+    // The hash table entry for the last kMinLength bytes of `history`. The
+    // 64-bit product wraps; that is the hash, as in context_table.hpp.
+    [[nodiscard]] std::size_t hash_slot(std::uint64_t history) const noexcept {
+        return static_cast<std::size_t>(((history & kContextMask) * kHashMultiplier) >>
+                                        hash_shift_);
+    }
 
     [[nodiscard]] std::uint32_t byte_at(std::uint64_t position) const noexcept {
         return buffer_[static_cast<std::size_t>(position & (buffer_.size() - 1))];
@@ -221,14 +249,14 @@ private:
         pointer_ = earlier;
     }
 
-    std::vector<std::uint8_t> buffer_;      // byte at position p is at p mod its size
-    std::vector<std::uint32_t> positions_;  // context hash -> position after it, or 0
-    ProbabilityMap map_;                    // length class and expected bit -> P(1)
-    int hash_shift_;                        // 64 - hash_bits
-    std::uint64_t position_ = 0;            // bytes seen
-    std::uint64_t pointer_ = 0;             // the position of the byte the match predicts
-    std::uint32_t length_ = 0;              // bytes the match has agreed, or 0 for none
-    std::uint32_t expected_bit_ = 0;        // the bit the last predict() expected
+    TableArray<std::uint8_t> buffer_;      // byte at position p is at p mod its size
+    TableArray<std::uint32_t> positions_;  // context hash -> position after it, or 0
+    ProbabilityMap map_;                   // length class and expected bit -> P(1)
+    int hash_shift_;                       // 64 - hash_bits
+    std::uint64_t position_ = 0;           // bytes seen
+    std::uint64_t pointer_ = 0;            // the position of the byte the match predicts
+    std::uint32_t length_ = 0;             // bytes the match has agreed, or 0 for none
+    std::uint32_t expected_bit_ = 0;       // the bit the last predict() expected
 };
 
 }  // namespace cpress::model

@@ -85,7 +85,7 @@ Out of scope, each measured or considered and left for the stage named:
 ## Files
 
 ```
-src/model/table_allocator.hpp  TableAllocator<T>: model tables, large pages where granted
+src/model/table_allocator.hpp  TableAllocator<T>, TableArray<T>: model tables, large pages where granted
 src/table_memory.cpp           the operating-system calls behind it, one block per platform
 src/model/prefetch.hpp         prefetch(address): the one compiler-specific hint
 src/model/predictor.hpp        the Prefetching concept
@@ -178,18 +178,38 @@ mostly hit. Measured: 14% faster compressing, 12% decompressing.
 | Elsewhere | ordinary memory | |
 
 ```cpp
-// A standard allocator for the model's large tables. Blocks of
-// kLargePageBytes or more get large pages where the platform grants them;
-// every block is aligned to at least a cache line. Never changes what the
-// memory holds: std::vector value-initialises it either way.
+// Allocates the model's large tables, in the shape of a standard
+// allocator's allocate() and deallocate(). Blocks of kLargePageBytes or more
+// get large pages where the platform grants them; every block is aligned to
+// at least a cache line. Never changes what the memory holds: TableArray
+// value-initialises it either way.
 template <typename T>
 class TableAllocator {
 public:
-    using value_type = T;
     [[nodiscard]] T* allocate(std::size_t count);         // throws std::bad_alloc
     void deallocate(T* pointer, std::size_t count) noexcept;
 };
+
+// A model table: `size` value-initialised elements of a trivial type, in
+// memory from TableAllocator. Fixed size; neither copied nor moved.
+template <typename T>
+class TableArray {
+public:
+    explicit TableArray(std::size_t size);  // throws std::bad_alloc
+    T& operator[](std::size_t i) noexcept;  // and size(), data(), begin(), end()
+};
 ```
+
+The tables were first to be `std::vector<T, TableAllocator<T>>`. Measured,
+that made the sanitizer suite twice as slow: libstdc++ value-initialises a
+vector with any allocator but `std::allocator` one call per element, which
+an unoptimised build pays for in full. Building a level-10 `Mix9` took
+32 ms under ASan instead of 7, and the mutation test builds thousands, so
+the suite went from about 330 s to about 580 s, over its 5-minute
+budget.
+`TableArray` value-initialises in one call, as `std::vector` with
+`std::allocator` does, and the build takes 5 ms; a table never grew, so
+nothing else is lost. (Amended in implementation.)
 
 - Failing to get large pages is never an error: the model is the same,
   only slower. Running out of memory is still `std::bad_alloc`, which the
@@ -199,10 +219,24 @@ public:
   Update that comment. Alignment alone measured nothing, but costs nothing
   here.
 - The history tables, the match model's buffer and hash table, and the
-  second APM use it. The mixer's weights, the first APM and the maps are
-  too small to matter.
+  second APM use it. The mixer's weights and the maps are too small to
+  matter. The first APM is the same class as the second, so it uses it
+  too; at 16 KiB it takes the ordinary path.
 - `memory_bytes()` keeps counting what the model asks for. Rounding up to a
   page is the allocator's business; say so where it rounds.
+- Each platform frees a block of a given size the same way whether or not
+  it got large pages, so `deallocate` needs only the size: on Windows a
+  refused large-page block falls back to `VirtualAlloc` with ordinary
+  pages, not to `new`. The test hook, `detail::refuse_large_pages(bool)`,
+  takes that same fallback; on Linux it asks for `MADV_NOHUGEPAGE`, so that
+  a kernel with transparent huge pages set to `always` does not give large
+  pages unasked.
+- On Windows, holding the privilege is not enough: `VirtualAlloc` grants
+  large pages only to a process that has enabled it in its own token, so
+  `table_memory.cpp` does that once, with `AdjustTokenPrivileges`. That
+  changes nothing outside the process, and fails harmlessly for an account
+  without the privilege. (Amended in implementation: the first draft did
+  not say this, and without it a granted privilege would do nothing.)
 
 This is the one place the model touches the operating system. It is
 platform code, not a dependency, and the benchmark already has its own;
@@ -243,12 +277,16 @@ Both are one function, given two bytes:
 // A hint, and nothing else: fetch what coding the byte after `byte` will
 // touch, if `byte` is the byte now being coded and `next` the one after.
 // Computes from a copy of the state; changes nothing the model predicts.
-void prefetch_after(std::uint32_t byte, std::uint32_t next) noexcept;
+void prefetch_after(std::uint32_t byte, std::uint32_t next) const noexcept;
 
 // prefetch_after() with the match model's guess for both bytes, if a match
 // is running; otherwise nothing.
-void prefetch_from_match() noexcept;
+void prefetch_from_match() const noexcept;
 ```
+
+Both are `const` members, so the compiler, not a reviewer, checks that a
+hint cannot move model state. (Amended in implementation: the first draft
+of this brief left them non-`const`.)
 
 **The driver.** A new concept beside `Predictor`:
 
@@ -278,14 +316,35 @@ used by both paths, so neither can drift from the other:
 struct Words { std::uint64_t word; std::uint64_t previous; };
 [[nodiscard]] constexpr Words next_words(Words words, std::uint32_t byte) noexcept;
 
-// The key of every history table, for a history, words and marker.
-[[nodiscard]] constexpr std::array<std::uint64_t, kTables> table_keys(
-    std::uint64_t history, Words words, std::uint32_t marker) noexcept;
+// Mix9: what a byte's keys are made of, besides the marker, and the step
+// from one byte's to the next's.
+struct ByteContext { std::uint64_t history; words::Words words;
+                     std::uint64_t word_key, bigram_key; };
+[[nodiscard]] static constexpr ByteContext next_context(const ByteContext& context,
+                                                        std::uint32_t byte) noexcept;
+
+// The key of every history table, for a context and marker.
+[[nodiscard]] static constexpr std::array<std::uint64_t, kTables> table_keys(
+    const ByteContext& context, std::uint32_t marker) noexcept;
+
+// What prefetch_after(byte, next) fetches: every key at both nibbles of
+// the byte after `byte`, and the context the match model will hash.
+struct Lookahead { std::array<std::uint64_t, kTables> first_nibble, second_nibble;
+                   ByteContext context; };
+[[nodiscard]] Lookahead lookahead(std::uint32_t byte, std::uint32_t next) const noexcept;
 ```
 
 `select_slots` becomes `table_keys` and a `select` per table;
-`push_word_byte` becomes `next_words`. The word keys are derived from
-`Words` there and only there.
+`push_word_byte` becomes `next_words`, and `push_byte` steps the context
+with `next_context`, as `lookahead` does. The word keys are derived from
+`Words` in `next_context` and only there, once a byte, as stage 3 derived
+them. (Amended in implementation: the first draft passed the history and
+the words separately, which left the history's shift written twice, in
+`push_byte` and in the hint. Holding them as one `ByteContext` gives each
+step one function. Deriving the word keys in `table_keys` instead would
+have cost four more hashes a byte, two per nibble and two in the hint.) `lookahead` is split out
+of `prefetch_after` so that test 9 checks the keys the hint actually
+fetches, not a test's own derivation of them.)
 
 **The other pieces.**
 
@@ -300,6 +359,15 @@ struct Words { std::uint64_t word; std::uint64_t previous; };
   and Clang, `_mm_prefetch` with `_MM_HINT_T0` on MSVC for x86, and nothing
   elsewhere. It is the one preprocessor conditional in model code; say so
   beside it.
+- On GCC it is followed by an empty `asm volatile("")`. GCC counts
+  `__builtin_prefetch` as having no effect, so it judged `Mix9::prefetch_after`,
+  which only prefetches and was not inlined, a function without effects,
+  and deleted every call to it: the first GCC build had no prefetch
+  instruction at all, and measured only what large pages gave. The empty
+  asm is an effect the compiler must keep; it emits nothing. MSVC kept its
+  prefetches without help. A build's prefetches can be counted with
+  `objdump -d cpress-bench | grep -c prefetcht0`. (Amended in
+  implementation.)
 
 **Distance.** The prototype tried one, two, four, eight and sixteen bytes
 ahead; one to four were within noise of each other, and sixteen was worse.
@@ -348,7 +416,8 @@ Stage 3 is tagged `v0.3`, so `mix9` and its output are permanent.
 
 1. Blocks below and at least `kLargePageBytes`, and of zero elements,
    allocate and deallocate cleanly; every block is 64-byte aligned.
-2. A `std::vector` through the allocator is zeroed, at both sizes.
+2. A `TableArray` is zeroed and aligned, at both sizes, with large pages
+   granted and refused.
 3. With large pages refused (a test hook), a `Mix9` gives the same
    predictions over a few kilobytes as one with them granted.
 4. Under ASan, nothing leaks and no deallocation is mismatched, at both

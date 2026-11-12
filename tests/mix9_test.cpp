@@ -1,5 +1,6 @@
-// Mix9 tests: valid predictions on any input, determinism, and the level
-// arithmetic.
+// Mix9 tests: valid predictions on any input, determinism, the level
+// arithmetic, and the hints: they change no prediction, and the keys they
+// fetch for are the keys the model then selects.
 #include "check.hpp"
 
 #include "model/context_table.hpp"
@@ -8,9 +9,12 @@
 #include "model/predictor.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <random>
+#include <string_view>
 #include <vector>
 
 namespace cpress::test {
@@ -114,12 +118,139 @@ void test_deterministic() {
     CHECK(identical);
 }
 
+// Stage 3's word step, as Mix9 wrote it before next_words() and
+// table_keys() replaced it: the words, and the two word keys before the
+// marker, kept up to date on every byte.
+struct Stage3Words {
+    std::uint64_t word = 0;
+    std::uint64_t previous_word = 0;
+    std::uint64_t word_key = model::words::word_key(0);
+    std::uint64_t bigram_key = model::words::bigram_key(0, 0);
+
+    void push(std::uint32_t byte) {
+        if (model::words::is_letter(byte)) {
+            word = (word + model::words::lowercase(byte) + 1) * model::words::kWordMultiplier;
+        } else if (word != 0) {
+            previous_word = word;
+            word = 0;
+        }
+        word_key = model::words::word_key(word);
+        bigram_key = model::words::bigram_key(word, previous_word);
+    }
+};
+
+// The word and bigram tables, the last two.
+constexpr std::size_t kWordTable = Mix9::kTables - 2;
+constexpr std::size_t kBigramTable = Mix9::kTables - 1;
+
+// next_words() gives the words stage 3's step gave, and next_context() and
+// table_keys() the word keys, for every byte value from several starting
+// states: no word, within a word, just after one, and within a word of
+// UTF-8.
+void test_next_words_matches_stage_3() {
+    constexpr std::array<std::string_view, 4> kPrefixes{"", "the qu", "the cat ", "Z\xC3\xBCr"};
+    constexpr std::uint32_t kMarker = model::kNibbleDone + 3;
+    bool matches = true;
+    for (const std::string_view prefix : kPrefixes) {
+        Stage3Words start3;
+        Mix9::ByteContext start;
+        for (const char c : prefix) {
+            const auto byte = static_cast<std::uint8_t>(c);
+            start3.push(byte);
+            start = Mix9::next_context(start, byte);
+        }
+        for (std::uint32_t byte = 0; byte <= 0xFF; ++byte) {
+            Stage3Words expected = start3;
+            expected.push(byte);
+            const model::words::Words words = model::words::next_words(start.words, byte);
+            const auto keys = Mix9::table_keys(Mix9::next_context(start, byte), kMarker);
+            matches = matches && words.word == expected.word &&
+                      words.previous == expected.previous_word &&
+                      keys[kWordTable] == ((expected.word_key << model::kMarkerBits) | kMarker) &&
+                      keys[kBigramTable] == ((expected.bigram_key << model::kMarkerBits) | kMarker);
+        }
+    }
+    CHECK(matches);
+}
+
+// The inputs the hint tests run over: text, where matches run and the
+// decoder's guess is often right, and random bytes, where it is not.
+std::array<cpress::Bytes, 2> hint_inputs() {
+    return {sample_text(8192), random_bytes(8192, 41)};
+}
+
+// Hints change nothing. A model given both hints before every byte, the
+// encoder's with the true bytes, predicts exactly as one given none.
+void test_hints_change_no_prediction() {
+    for (const cpress::Bytes& data : hint_inputs()) {
+        Mix9 hinted(Mix9::kMinLevel);
+        Mix9 plain(Mix9::kMinLevel);
+        const auto give_hints = [&](std::size_t i) {
+            if (i + 1 < data.size()) hinted.prefetch_after(data[i], data[i + 1]);
+            hinted.prefetch_from_match();
+        };
+        CHECK(predictions(hinted, data, give_hints) == predictions(plain, data));
+    }
+}
+
+// Whether every table of `model` has selected the slot of its key in
+// `keys`: in the bucket locate() gives the key, with the key's check.
+bool selects(const Mix9& model, const std::array<std::uint64_t, Mix9::kTables>& keys) {
+    for (std::size_t i = 0; i < Mix9::kTables; ++i) {
+        const model::HistoryTable& table = model.table(i);
+        const model::HistoryTable::Location location = table.locate(keys.at(i));
+        if (table.selected_slot() / model::HistoryTable::kWays != location.bucket ||
+            table.selected_check() != location.check) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The keys are the keys. Before each byte, lookahead() from the true bytes,
+// which is what prefetch_after() fetches, names the slot every table then
+// selects at both nibbles of the byte after, and the context the model is
+// in when that byte starts.
+void test_prefetched_keys_are_the_keys_used() {
+    for (const cpress::Bytes& data : hint_inputs()) {
+        Mix9 model(Mix9::kMinLevel);
+        std::optional<Mix9::Lookahead> ahead;  // for the byte about to be coded
+        bool first_nibbles = true;
+        bool second_nibbles = true;
+        bool contexts = true;
+        for (std::size_t i = 0; i < data.size(); ++i) {
+            std::optional<Mix9::Lookahead> after;
+            if (i + 1 < data.size()) after = model.lookahead(data[i], data[i + 1]);
+            if (ahead) {
+                contexts = contexts && ahead->context.history == model.context().history &&
+                           ahead->context.words.word == model.context().words.word &&
+                           ahead->context.words.previous == model.context().words.previous;
+            }
+            for (int shift = 7; shift >= 0; --shift) {
+                if (ahead && shift == 7)
+                    first_nibbles = first_nibbles && selects(model, ahead->first_nibble);
+                if (ahead && shift == 3)
+                    second_nibbles = second_nibbles && selects(model, ahead->second_nibble);
+                static_cast<void>(model.predict());
+                model.update((data[i] >> shift) & 1);
+            }
+            ahead = after;
+        }
+        CHECK(first_nibbles);
+        CHECK(second_nibbles);
+        CHECK(contexts);
+    }
+}
+
 }  // namespace
 
 void run_mix9_tests() {
     test_predictions_stay_in_range();
     test_deterministic();
     test_order2_cap_changes_nothing();
+    test_next_words_matches_stage_3();
+    test_hints_change_no_prediction();
+    test_prefetched_keys_are_the_keys_used();
 }
 
 }  // namespace cpress::test

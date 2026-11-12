@@ -19,15 +19,20 @@
 // Why a check. Two contexts that land on one unchecked slot share its
 // history, and each sees the other's bits as noise. With a check a
 // stranger is noticed, 255 times in 256, and gets a fresh slot instead.
-// Why four ways. A bucket is one cache line once the table is aligned, so
-// searching it costs no more memory traffic than reading one slot.
+// Why four ways. A bucket is one cache line, so searching it costs no more
+// memory traffic than reading one slot.
 //
 // An empty slot has check 0 and every state 0. A context whose check is 0
 // adopts one as its own, which is harmless: the slot is in its initial
 // state either way.
 //
-// Memory: 2^slot_bits * 16 bytes. Buckets are not yet aligned to cache
-// lines, so one may straddle two; aligning them changes no prediction.
+// Memory: 2^slot_bits * 16 bytes, through TableAllocator: on large pages
+// where the platform grants them, and aligned to a cache line, so every
+// bucket is exactly one.
+//
+// Which bucket the next nibble needs is known before it is needed (mix9.hpp
+// says how), so a caller can prefetch(key) it while other work goes on, and
+// select(key) finds it in the cache. Both find the bucket through locate().
 //
 // Update rule: the state at the current node follows next_state().
 //
@@ -38,15 +43,16 @@
 #pragma once
 
 #include "model/context_table.hpp"
+#include "model/prefetch.hpp"
 #include "model/probability_map.hpp"
 #include "model/state_table.hpp"
+#include "model/table_allocator.hpp"
 
 #include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <vector>
 
 namespace cpress::model {
 
@@ -128,6 +134,17 @@ public:
         selected_ = first + claim(bucket, location.check);
     }
 
+    // The bucket a select(key) would search.
+    [[nodiscard]] const void* bucket_address(std::uint64_t key) const noexcept {
+        return &slots_[locate(key).bucket * kWays];
+    }
+
+    // Starts loading the bucket of `key` into the cache, for a select(key)
+    // to come. A hint: it changes nothing in the table.
+    void prefetch(std::uint64_t key) const noexcept {
+        model::prefetch(bucket_address(key));
+    }
+
     // The state of `node`, 1 to 15, in the selected slot.
     [[nodiscard]] std::uint8_t state(std::uint32_t node) const noexcept {
         assert(node >= 1 && node < kNibbleDone);
@@ -151,6 +168,9 @@ public:
     [[nodiscard]] std::uint8_t selected_check() const noexcept {
         return slots_[selected_][kCheckByte];
     }
+    [[nodiscard]] const void* slot_address(std::size_t slot) const noexcept {
+        return &slots_[slot];
+    }
 
 private:
     // Byte 0 is the check; byte `node` is the state of that node.
@@ -159,7 +179,7 @@ private:
     static constexpr int kWayBits = 2;
     static_assert(kWays == std::size_t{1} << kWayBits);
     static_assert(kSlotBytes == kNibbleDone, "the check, then one state per node");
-    static_assert(sizeof(Slot) * kWays == 64, "a bucket is one cache line");
+    static_assert(sizeof(Slot) * kWays == kCacheLineBytes, "a bucket is one cache line");
 
     // The way of `bucket` that `check` owns: the first whose check matches,
     // or else the one whose node 1 state has the lowest total count (the
@@ -186,8 +206,8 @@ private:
     }
 
     int bucket_bits_;  // slot_bits - kWayBits, in [1, 29]: the shifts above stay below 64
-    std::vector<Slot> slots_;
-    std::size_t selected_ = 0;  // an index, not a pointer, so a table can be copied or moved
+    TableArray<Slot> slots_;
+    std::size_t selected_ = 0;  // the slot state() and update() use
 };
 
 }  // namespace cpress::model

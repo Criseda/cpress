@@ -6,6 +6,11 @@
 // call it identically; that is what keeps the decoder in step with the
 // encoder.
 //
+// A Prefetching predictor also gets a hint before each byte, in the same
+// place in both loops: the encoder, which has the input, gives it the byte
+// and the one after; the decoder, which has not decoded them yet, asks it to
+// guess. That is why compressing is the faster direction for such a model.
+//
 // Each comes in two forms. One takes a predictor the caller has constructed,
 // for models that need arguments; it must be fresh, never used before. The
 // other constructs a predictor that needs none and calls the first.
@@ -72,7 +77,11 @@ void encode_bitwise(P& predictor, ByteView input, Bytes& output) {
     output.reserve(output.size() + input.size() + (input.size() / 64) + 16);
 
     coder::Encoder encoder(output);
-    for (const std::uint8_t byte : input) {
+    for (std::size_t i = 0; i < input.size(); ++i) {
+        if constexpr (model::Prefetching<P>) {
+            if (i + 1 < input.size()) predictor.prefetch_after(input[i], input[i + 1]);
+        }
+        const std::uint8_t byte = input[i];
         for (int shift = 7; shift >= 0; --shift) {
             const int bit = (byte >> shift) & 1;
             encoder.encode(bit, predictor.predict());
@@ -133,6 +142,7 @@ void decode_bitwise(P& predictor, ByteView payload, std::uint64_t original_size,
         const std::uint64_t payload_left = payload_size - decoder.consumed() + coder::kCodeBytes;
         detail::require_within_expansion(original_size - decoded, payload_left);
 
+        if constexpr (model::Prefetching<P>) predictor.prefetch_from_match();
         int byte = 0;
         for (int bit_index = 0; bit_index < 8; ++bit_index) {
             const int bit = decoder.decode(predictor.predict());

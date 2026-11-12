@@ -18,7 +18,8 @@
 //
 // Fixed point: a point is a p16, P(1) out of 65536, in [0, 65535].
 //
-// Memory: contexts * kPoints * 2 bytes.
+// Memory: contexts * kPoints * 2 bytes, through TableAllocator: a model's
+// second APM is 4 MiB, read at a place that changes with every byte.
 //
 // Technique: secondary symbol estimation (Mahoney, Data Compression
 // Explained, section 4.3.3). Thirty-three points at these places, these
@@ -29,6 +30,7 @@
 
 #include "model/logistic.hpp"
 #include "model/predictor.hpp"
+#include "model/table_allocator.hpp"
 
 #include <algorithm>
 #include <array>
@@ -36,7 +38,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <vector>
 
 namespace cpress::model {
 
@@ -89,18 +90,17 @@ public:
     // Allocates `contexts` curves, each the identity. Throws std::bad_alloc
     // if there is no memory.
     //
-    // Every curve starts the same, so the table starts as one curve, grows
-    // to its full size, and the filled part is then doubled until it is
-    // full: a handful of block copies rather than one per context. A model
-    // holds 65,536 curves and every decode builds one. Copied a curve at a
-    // time, they took 45 ms to build under ASan, most of the mutation test's
-    // time; this takes 5. Whatever `contexts` is, nothing is written past
-    // the table: the doubling copies only what the table already holds.
-    explicit Apm(std::size_t contexts)
-        : points_(detail::kInitialApmCurve.begin(), detail::kInitialApmCurve.end()) {
+    // Every curve starts the same, so the first curve is written, and the
+    // filled part of the table is then doubled until it is full: a handful
+    // of block copies rather than one per context. A model holds 65,536
+    // curves and every decode builds one. Copied a curve at a time, they
+    // took 45 ms to build under ASan, most of the mutation test's time; this
+    // takes 5. Whatever `contexts` is, nothing is written past the table:
+    // the doubling copies only what the table already holds.
+    explicit Apm(std::size_t contexts) : points_(contexts * kPoints) {
         assert(contexts > 0);
-        points_.resize(contexts * kPoints);
         const std::span<std::uint16_t> points(points_);
+        std::ranges::copy(detail::kInitialApmCurve, points.begin());
         for (std::size_t filled = kPoints; filled < points.size(); filled *= 2) {
             const std::size_t count = std::min(filled, points.size() - filled);
             std::ranges::copy(points.first(count), points.subspan(filled).begin());
@@ -151,8 +151,8 @@ public:
     }
 
 private:
-    std::vector<std::uint16_t> points_;  // context * kPoints + point
-    std::size_t nearest_ = 0;            // the point the last refine() found nearest
+    TableArray<std::uint16_t> points_;  // context * kPoints + point
+    std::size_t nearest_ = 0;           // the point the last refine() found nearest
 };
 
 }  // namespace cpress::model

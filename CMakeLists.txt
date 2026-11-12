@@ -43,12 +43,14 @@ if(CPRESS_SANITIZE)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-# Core library: container format, codec registry, checksum, file I/O.
+# Core library: container format, codec registry, checksum, file I/O, and
+# the memory behind the models' large tables.
 add_library(cpress_core STATIC
     src/codecs.cpp
     src/container.cpp
     src/crc32.cpp
-    src/io.cpp)
+    src/io.cpp
+    src/table_memory.cpp)
 target_include_directories(cpress_core PUBLIC include PRIVATE src)
 target_link_libraries(cpress_core PRIVATE cpress_warnings)
 
@@ -82,7 +84,8 @@ add_executable(cpress-tests
     tests/order0_test.cpp
     tests/probability_map_test.cpp
     tests/roundtrip.cpp
-    tests/state_table_test.cpp)
+    tests/state_table_test.cpp
+    tests/table_allocator_test.cpp)
 target_include_directories(cpress-tests PRIVATE src)
 target_link_libraries(cpress-tests PRIVATE cpress_core cpress_warnings)
 add_test(NAME cpress-tests COMMAND cpress-tests)
