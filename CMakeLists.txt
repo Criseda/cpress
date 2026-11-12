@@ -22,7 +22,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Warning flags shared by every target.
 add_library(cpress_warnings INTERFACE)
 if(MSVC)
-    target_compile_options(cpress_warnings INTERFACE /W4 /permissive- /utf-8)
+    # /wd5030: an attribute for other compilers, such as [[gnu::noinline]],
+    # is ignored, as the standard says, without a warning. GCC and Clang
+    # still warn about one that none of them knows.
+    target_compile_options(cpress_warnings INTERFACE /W4 /permissive- /utf-8 /wd5030)
     if(CPRESS_WERROR)
         target_compile_options(cpress_warnings INTERFACE /WX)
     endif()

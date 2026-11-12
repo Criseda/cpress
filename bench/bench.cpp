@@ -12,7 +12,9 @@
 // processor, and --repeat runs the round trip k times in the child and
 // reports the fastest of each direction: the run least disturbed by anything
 // else. Every row carries the archive's CRC-32, so it says whether the
-// output was the same as well as how large it was.
+// output was the same as well as how large it was, and how much of each
+// model the operating system put on large pages, which the speed depends on
+// and the program cannot choose.
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
 #include "platform.hpp"
@@ -21,6 +23,7 @@
 #include <array>
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <ctime>
 #include <exception>
@@ -146,7 +149,8 @@ std::string csv_quote(std::string_view field) {
 // by another version of the benchmark, and rows are never appended to it.
 constexpr std::string_view kCsvHeader =
     "timestamp_utc,commit,codec,file,original_bytes,compressed_bytes,archive_crc32,"
-    "bits_per_byte,compress_ns_per_byte,decompress_ns_per_byte,repeat,peak_mem_mib";
+    "bits_per_byte,compress_ns_per_byte,decompress_ns_per_byte,repeat,peak_mem_mib,"
+    "large_page_mib";
 
 // True if rows can be appended to `path`: it is missing, empty, or starts
 // with kCsvHeader. Otherwise says why not.
@@ -162,6 +166,10 @@ bool csv_accepts_rows(const fs::path& path) {
               << "' has the columns of another version of cpress-bench; move it aside or pass "
                  "--csv <new file>\n";
     return false;
+}
+
+double mebibytes(std::uint64_t bytes) {
+    return static_cast<double>(bytes) / (1024.0 * 1024.0);
 }
 
 double per_byte(Clock::duration elapsed, std::size_t bytes) {
@@ -218,7 +226,8 @@ void print_table_header() {
     std::cout << std::left << std::setw(kNameWidth) << "file" << std::right << std::setw(14)
               << "original" << std::setw(14) << "compressed" << std::setw(10) << "crc32"
               << std::setw(10) << "bits/B" << std::setw(12) << "comp ns/B" << std::setw(12)
-              << "dec ns/B" << std::setw(11) << "peak MiB" << "\n";
+              << "dec ns/B" << std::setw(11) << "peak MiB" << std::setw(11) << "large MiB"
+              << "\n";
 }
 
 // Formats a CRC-32 as eight hexadecimal digits.
@@ -245,6 +254,7 @@ int run_one(const Options& options) {
 
     const fs::path path = options.one;
     const cpress::Bytes input = cpress::read_file(path);
+    const platform::LargePageCount large_pages_before = platform::count_large_pages();
     const std::optional<Measurement> measured = measure(input, *codec, options.repeat);
     if (!measured) {
         std::cerr << "cpress-bench: '" << path.string() << "' failed verification\n";
@@ -258,13 +268,19 @@ int run_one(const Options& options) {
                       : 8.0 * static_cast<double>(archive_size) / static_cast<double>(input.size());
     const double compress_ns = per_byte(measured->compress, input.size());
     const double decompress_ns = per_byte(measured->decompress, input.size());
-    const double peak_mib = static_cast<double>(platform::peak_memory_bytes()) / (1024.0 * 1024.0);
+    const double peak_mib = mebibytes(platform::peak_memory_bytes());
+    // Each round trip builds a model to compress and another to decompress.
+    const std::optional<std::uint64_t> large_page_bytes =
+        platform::large_page_bytes(large_pages_before, 2 * options.repeat);
+    const std::string large_page_mib =
+        large_page_bytes ? std::to_string(std::llround(mebibytes(*large_page_bytes))) : "";
 
     std::cout << std::left << std::setw(kNameWidth) << path.filename().string() << std::right
               << std::setw(14) << input.size() << std::setw(14) << archive_size << std::setw(10)
               << crc << std::fixed << std::setprecision(3) << std::setw(10) << bits_per_byte
               << std::setprecision(1) << std::setw(12) << compress_ns << std::setw(12)
-              << decompress_ns << std::setw(11) << peak_mib << "\n";
+              << decompress_ns << std::setw(11) << peak_mib << std::setw(11)
+              << (large_page_bytes ? large_page_mib : "?") << "\n";
 
     std::error_code ec;
     const bool needs_header = !fs::exists(options.csv, ec) || fs::file_size(options.csv, ec) == 0;
@@ -278,7 +294,7 @@ int run_one(const Options& options) {
         << csv_quote(path.generic_string()) << ',' << input.size() << ',' << archive_size << ','
         << crc << ',' << std::fixed << std::setprecision(4) << bits_per_byte << ','
         << std::setprecision(2) << compress_ns << ',' << decompress_ns << ',' << options.repeat
-        << ',' << peak_mib << "\n";
+        << ',' << peak_mib << ',' << large_page_mib << "\n";
     return 0;
 }
 

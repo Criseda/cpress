@@ -280,7 +280,12 @@ public:
         return (mixed + refined + (2 * refined_by_previous)) / 4;
     }
 
-    void update(int bit) noexcept {
+    // Not inlined, on GCC and Clang. Once both coding loops also call
+    // prefetch_after(), GCC 13 inlines this into each of them, and on enwik8
+    // the larger loops ran about 10% slower each way than with a call here,
+    // even with every table in the cache (stage 4's brief, section 4). MSVC
+    // ignores the attribute; its loops were not slowed.
+    [[gnu::noinline]] void update(int bit) noexcept {
         assert(bit == 0 || bit == 1);
         mixer_.update(bit);  // from its own output, not the refined one
         by_partial_byte_.update(bit);
