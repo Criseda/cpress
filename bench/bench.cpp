@@ -17,13 +17,13 @@
 // and the program cannot choose.
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
+#include "model/table_allocator.hpp"
 #include "platform.hpp"
 
 #include <algorithm>
 #include <array>
 #include <charconv>
 #include <chrono>
-#include <cmath>
 #include <cstdint>
 #include <ctime>
 #include <exception>
@@ -168,6 +168,15 @@ bool csv_accepts_rows(const fs::path& path) {
     return false;
 }
 
+// The bytes of memory put on large pages so far, by whichever count the
+// platform keeps: the model's own on Windows, where each block is granted
+// large pages or not when it is allocated; the kernel's on Linux, which
+// backs a block with them page by page as it is touched, and counts them
+// for every process at once.
+std::uint64_t large_page_bytes_so_far() {
+    return cpress::model::large_page_bytes_granted() + platform::huge_page_bytes_faulted();
+}
+
 double mebibytes(std::uint64_t bytes) {
     return static_cast<double>(bytes) / (1024.0 * 1024.0);
 }
@@ -254,7 +263,7 @@ int run_one(const Options& options) {
 
     const fs::path path = options.one;
     const cpress::Bytes input = cpress::read_file(path);
-    const platform::LargePageCount large_pages_before = platform::count_large_pages();
+    const std::uint64_t large_pages_before = large_page_bytes_so_far();
     const std::optional<Measurement> measured = measure(input, *codec, options.repeat);
     if (!measured) {
         std::cerr << "cpress-bench: '" << path.string() << "' failed verification\n";
@@ -268,19 +277,22 @@ int run_one(const Options& options) {
                       : 8.0 * static_cast<double>(archive_size) / static_cast<double>(input.size());
     const double compress_ns = per_byte(measured->compress, input.size());
     const double decompress_ns = per_byte(measured->decompress, input.size());
-    const double peak_mib = mebibytes(platform::peak_memory_bytes());
-    // Each round trip builds a model to compress and another to decompress.
-    const std::optional<std::uint64_t> large_page_bytes =
-        platform::large_page_bytes(large_pages_before, 2 * options.repeat);
-    const std::string large_page_mib =
-        large_page_bytes ? std::to_string(std::llround(mebibytes(*large_page_bytes))) : "";
+    // Each round trip builds a model to compress and then one to decompress,
+    // never two at once, so the peak held one model's large pages.
+    const std::uint64_t models = 2 * static_cast<std::uint64_t>(options.repeat);
+    const std::uint64_t large_page_bytes =
+        (large_page_bytes_so_far() - large_pages_before) / models;
+    std::uint64_t peak_bytes = platform::peak_memory_bytes();
+    if (platform::peak_memory_omits_large_pages()) peak_bytes += large_page_bytes;
+    const double peak_mib = mebibytes(peak_bytes);
+    const double large_page_mib = mebibytes(large_page_bytes);
 
     std::cout << std::left << std::setw(kNameWidth) << path.filename().string() << std::right
               << std::setw(14) << input.size() << std::setw(14) << archive_size << std::setw(10)
               << crc << std::fixed << std::setprecision(3) << std::setw(10) << bits_per_byte
               << std::setprecision(1) << std::setw(12) << compress_ns << std::setw(12)
-              << decompress_ns << std::setw(11) << peak_mib << std::setw(11)
-              << (large_page_bytes ? large_page_mib : "?") << "\n";
+              << decompress_ns << std::setw(11) << peak_mib << std::setw(11) << large_page_mib
+              << "\n";
 
     std::error_code ec;
     const bool needs_header = !fs::exists(options.csv, ec) || fs::file_size(options.csv, ec) == 0;

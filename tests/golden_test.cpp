@@ -7,6 +7,9 @@
 #include "check.hpp"
 
 #include "cpress/cpress.hpp"
+#include "model/mix6.hpp"
+#include "model/order0.hpp"
+#include "model/predictor.hpp"
 
 #include <array>
 #include <cstdint>
@@ -15,6 +18,11 @@
 
 namespace cpress::test {
 namespace {
+
+// The frozen codecs before mix9 take no hints, so their coding loops are
+// exactly what they were when frozen.
+static_assert(!model::Prefetching<model::Order0>);
+static_assert(!model::Prefetching<model::Mix6>);
 
 // Codec 1, order0, frozen when stage 1 was merged. Produced at 5beef5f by:
 //   printf '%s' '<kOrder0Text>' > golden.txt
@@ -53,8 +61,8 @@ constexpr std::array<std::uint8_t, 102> kMix6Archive{
     0xbe, 0x71, 0xc8, 0x6d, 0x86, 0xb3, 0xc7, 0x05, 0x55, 0x0a, 0x6b, 0x1c,
 };
 
-// Codec 3, mix9, frozen at v0.3. Produced at 5fec20a, whose model and coder
-// code is the tagged code, by:
+// Codec 3, mix9, frozen at v0.3. Produced from the code tagged v0.3 (at
+// 5fec20a, which adds only documents to it), by:
 //   printf '%s' '<kMix9Text>' > golden.txt
 //   cpress c --codec mix9 golden.txt
 // The payload starts with the level byte, 10 (kMinLevel), at offset 20. The

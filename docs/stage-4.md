@@ -152,6 +152,19 @@ and a process the scheduler moves to an efficiency core runs much slower.
   reports the minimum of each: the run least disturbed by anything else.
 - An `archive_crc32` column: the CRC-32 of the archive, so a row says not
   only how large the output was but whether it was the same output.
+- A `large_page_mib` column: how much of each model was on large pages.
+  On Windows a block is granted large pages or not when it is allocated,
+  so `table_memory.cpp` counts the blocks it was granted
+  (`model::large_page_bytes_granted()`). Linux backs a block page by page
+  as it is touched and counts only for the whole system:
+  `thp_fault_alloc` in `/proc/vmstat`, so another process taking huge
+  pages meanwhile would inflate it. Either count, divided by the models
+  built, is one model's share. Windows never puts large pages in a working
+  set, so its peak memory adds them to the peak working set; the working
+  set alone read 215 MiB for a 980 MiB model. (Amended in implementation:
+  the first rows labelled Windows "without large pages" by assuming the
+  privilege was missing. The account held it, `table_memory.cpp` enabled
+  it, and those rows had large pages.)
 
 The new columns, `repeat` and `archive_crc32`, change the CSV's header.
 `bench-results.csv` is a local, untracked log, so the benchmark does not
@@ -356,7 +369,9 @@ fetches, not a test's own derivation of them.)
   will select. The prototype also read that slot and fetched the buffer at
   the position it held, the start of the next lookup; measure it alone and
   keep it only if it shows. The read of the slot is a real read, but its
-  value is used only as an address to fetch.
+  value is used only as an address to fetch. (Amended in implementation:
+  measured alone, the buffer fetch gained nothing, 506 / 671 ns/byte with
+  it against 501 / 662 without, so it is not kept.)
 - `prefetch(const void*)` in `prefetch.hpp` is `__builtin_prefetch` on GCC
   and Clang, `_mm_prefetch` with `_MM_HINT_T0` on MSVC for x86, and nothing
   elsewhere. It is the one preprocessor conditional in model code; say so
@@ -370,6 +385,27 @@ fetches, not a test's own derivation of them.)
   prefetches without help. A build's prefetches can be counted with
   `objdump -d cpress-bench | grep -c prefetcht0`. (Amended in
   implementation.)
+- `Mix9::update()` is marked `[[gnu::noinline]]`. Once both coding loops
+  call `prefetch_after()`, GCC 13 inlines `update()` into each of them, and
+  the larger loops were about 10% slower each way than with a call, with
+  every table in the cache as well as without. Its encoder was 1,689 lines
+  of assembly with `update()` inlined and 936 without. One sitting, Linux,
+  `--repeat 2`, the builds alternated:
+
+  | Level | Build | Compress ns/B | Decompress ns/B |
+  |---|---|---|---|
+  | 23 | `v0.3` model | 714.7 | 730.9 |
+  | 23 | `update()` inlined | 509.5 | 669.9 |
+  | 23 | `update()` called | 457.5 | 597.1 |
+  | 12 | `v0.3` model | 465.4 | 501.7 |
+  | 12 | `update()` inlined | 500.4 | 568.0 |
+  | 12 | `update()` called | 445.3 | 483.2 |
+
+  This is the second compiler-specific spelling in model code, beside
+  `prefetch.hpp`'s. It needs no preprocessor conditional: MSVC ignores an
+  attribute in another compiler's namespace, and the build tells it not to
+  warn (`/wd5030`). MSVC's loops were not slowed, so it needs no
+  equivalent. (Amended in implementation.)
 
 **Distance.** The prototype tried one, two, four, eight and sixteen bytes
 ahead; one to four were within noise of each other, and sixteen was worse.

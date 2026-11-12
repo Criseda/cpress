@@ -80,6 +80,27 @@ void test_blocks_are_aligned_and_freed() {
     }
 }
 
+// Only blocks granted large pages are counted: with large pages refused, a
+// large block adds nothing to the count; granted, it adds its size or
+// nothing, as the platform decides.
+void test_only_granted_blocks_are_counted() {
+    TableAllocator<std::uint8_t> allocator;
+    for (const bool refused : {true, false}) {
+        model::detail::refuse_large_pages(refused);
+        const std::uint64_t before = model::large_page_bytes_granted();
+        std::uint8_t* block = allocator.allocate(kLargePageBytes);
+        const std::uint64_t added = model::large_page_bytes_granted() - before;
+        allocator.deallocate(block, kLargePageBytes);
+        if (refused) {
+            CHECK(added == 0);
+        } else {
+            const bool none_or_the_block = added == 0 || added >= kLargePageBytes;
+            CHECK(none_or_the_block);
+        }
+    }
+    model::detail::refuse_large_pages(false);
+}
+
 // A count whose size in bytes does not fit in a std::size_t is refused
 // before anything is allocated.
 void test_overflowing_count_is_bad_alloc() {
@@ -94,14 +115,27 @@ void test_overflowing_count_is_bad_alloc() {
     CHECK(threw);
 }
 
+// Allocates a block for `count` elements, fills it with ones and frees it,
+// so that memory reused by the next allocation of that size is not zero.
+void dirty_a_block(std::size_t count) {
+    TableAllocator<std::uint32_t> allocator;
+    std::uint32_t* block = allocator.allocate(count);
+    std::fill_n(block, count, std::numeric_limits<std::uint32_t>::max());
+    allocator.deallocate(block, count);
+}
+
 // A table is zeroed and aligned, below and above kLargePageBytes, with
-// large pages and without.
+// large pages and without. Each is built where a block of its size was just
+// filled and freed: the small one commonly gets that block back, so it
+// shows that TableArray zeroes, not the allocator. The large one comes fresh
+// from the operating system, which zeroes it anyway.
 void test_tables_are_zeroed() {
     constexpr std::size_t kSmall = kCacheLineBytes;
     constexpr std::size_t kLarge = (kLargePageBytes / sizeof(std::uint32_t)) + 1;
     for (const bool refused : {false, true}) {
         model::detail::refuse_large_pages(refused);
         for (const std::size_t count : {kSmall, kLarge}) {
+            dirty_a_block(count);
             const model::TableArray<std::uint32_t> table(count);
             CHECK(table.size() == count);
             CHECK(is_aligned(table.data(), kCacheLineBytes));
@@ -111,7 +145,7 @@ void test_tables_are_zeroed() {
     model::detail::refuse_large_pages(false);
 }
 
-// The smallest level at which every history table above order 2 is a block
+// The smallest level at which every history table above order 1 is a block
 // of kLargePageBytes or more.
 constexpr int kLargePageLevel = 17;
 static_assert(model::HistoryTable::memory_bytes(kLargePageLevel) >= kLargePageBytes);
@@ -137,6 +171,7 @@ void test_refused_large_pages_change_no_prediction() {
 
 void run_table_allocator_tests() {
     test_blocks_are_aligned_and_freed();
+    test_only_granted_blocks_are_counted();
     test_overflowing_count_is_bad_alloc();
     test_tables_are_zeroed();
     test_refused_large_pages_change_no_prediction();

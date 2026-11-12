@@ -283,7 +283,7 @@ public:
     // Not inlined, on GCC and Clang. Once both coding loops also call
     // prefetch_after(), GCC 13 inlines this into each of them, and on enwik8
     // the larger loops ran about 10% slower each way than with a call here,
-    // even with every table in the cache (stage 4's brief, section 4). MSVC
+    // even with every table in the cache (stage 4's brief, section 3). MSVC
     // ignores the attribute; its loops were not slowed.
     [[gnu::noinline]] void update(int bit) noexcept {
         assert(bit == 0 || bit == 1);
@@ -334,6 +334,7 @@ public:
     // will touch, if `byte` is the byte about to be coded and `next` the one
     // after. Call it at a byte boundary. Changes nothing the model predicts.
     void prefetch_after(std::uint32_t byte, std::uint32_t next) const noexcept {
+        assert(node_ == 1 && marker_ == kFirstNibble);  // at a byte boundary
         const Lookahead ahead = lookahead(byte, next);
         match_.prefetch_after(ahead.context.history);  // read as `byte` ends
         for (std::size_t i = 0; i < kTables; ++i) tables_[i].prefetch(ahead.first_nibble[i]);
@@ -420,5 +421,9 @@ private:
 };
 
 static_assert(Predictor<Mix9>);
+// Without this, a hint whose signature drifted would leave Mix9 short of the
+// concept, the coding loops would quietly stop calling it, and every test
+// of the output would still pass.
+static_assert(Prefetching<Mix9>);
 
 }  // namespace cpress::model

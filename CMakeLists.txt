@@ -64,6 +64,8 @@ target_link_libraries(cpress PRIVATE cpress_core cpress_warnings)
 
 # Benchmark runner.
 add_executable(cpress-bench bench/bench.cpp bench/platform.cpp)
+# src/ for model/table_allocator.hpp: how much memory went on large pages.
+target_include_directories(cpress-bench PRIVATE src)
 target_link_libraries(cpress-bench PRIVATE cpress_core cpress_warnings)
 if(WIN32)
     target_link_libraries(cpress-bench PRIVATE psapi)

@@ -1,6 +1,5 @@
 #include "platform.hpp"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdio>
@@ -71,39 +70,19 @@ std::string capture(const std::string& command) {
 
 const char* const kNullDevice = "nul";
 
-namespace {
-
-// This process's peak working set and peak committed memory, in bytes, or
-// nothing if Windows will not say.
-struct PeakMemory {
-    std::uint64_t working_set = 0;
-    std::uint64_t committed = 0;
-};
-
-std::optional<PeakMemory> peak_memory() {
+std::uint64_t peak_memory_bytes() {
     PROCESS_MEMORY_COUNTERS counters{};
     counters.cb = sizeof counters;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters) == 0) return {};
-    return PeakMemory{.working_set = counters.PeakWorkingSetSize,
-                      .committed = counters.PeakPagefileUsage};
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters) == 0) return 0;
+    return static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
 }
 
-}  // namespace
-
-std::uint64_t peak_memory_bytes() {
-    const std::optional<PeakMemory> peak = peak_memory();
-    if (!peak) return 0;
-    return std::max(peak->working_set, peak->committed);
+bool peak_memory_omits_large_pages() {
+    return true;
 }
 
-LargePageCount count_large_pages() {
-    return {};
-}
-
-std::optional<std::uint64_t> large_page_bytes(LargePageCount /*before*/, int /*models*/) {
-    const std::optional<PeakMemory> peak = peak_memory();
-    if (!peak) return {};
-    return peak->committed > peak->working_set ? peak->committed - peak->working_set : 0;
+std::uint64_t huge_page_bytes_faulted() {
+    return 0;
 }
 
 bool pin_to_cpu(int cpu) {
@@ -176,6 +155,10 @@ int run_process(const std::filesystem::path& exe, const std::vector<std::string>
 
 const char* const kNullDevice = "/dev/null";
 
+bool peak_memory_omits_large_pages() {
+    return false;
+}
+
 std::uint64_t peak_memory_bytes() {
     rusage usage{};
     if (getrusage(RUSAGE_SELF, &usage) != 0) return 0;
@@ -206,14 +189,8 @@ std::optional<std::uint64_t> vmstat(std::string_view name) {
 
 }  // namespace
 
-LargePageCount count_large_pages() {
-    return {.pages = vmstat("thp_fault_alloc").value_or(0)};
-}
-
-std::optional<std::uint64_t> large_page_bytes(LargePageCount before, int models) {
-    const std::optional<std::uint64_t> now = vmstat("thp_fault_alloc");
-    if (!now || *now < before.pages || models < 1) return {};
-    return (*now - before.pages) * kHugePageBytes / static_cast<std::uint64_t>(models);
+std::uint64_t huge_page_bytes_faulted() {
+    return vmstat("thp_fault_alloc").value_or(0) * kHugePageBytes;
 }
 
 // The process has one thread when this is called, so pinning the calling
@@ -226,12 +203,8 @@ bool pin_to_cpu(int cpu) {
     return sched_setaffinity(0, sizeof set, &set) == 0;
 }
 #else
-LargePageCount count_large_pages() {
-    return {};
-}
-
-std::optional<std::uint64_t> large_page_bytes(LargePageCount /*before*/, int /*models*/) {
-    return {};
+std::uint64_t huge_page_bytes_faulted() {
+    return 0;
 }
 
 bool pin_to_cpu(int /*cpu*/) {

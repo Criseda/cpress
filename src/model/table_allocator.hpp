@@ -17,8 +17,9 @@
 // the model is the same, only slower. Running out of memory is still
 // std::bad_alloc.
 //
-// Blocks of kLargePageBytes or more are rounded up to a multiple of it, for
-// the operating system; a table still sees the size it asked for, and
+// A block of kLargePageBytes or more may be rounded up to a whole number of
+// large pages, where the platform code asks for them; a table still sees
+// the size it asked for, and
 // memory_bytes() still counts that. Every block, of any size, is aligned to
 // kCacheLineBytes at least, so a structure of one cache line laid out at the
 // start of the table never straddles two.
@@ -29,6 +30,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <new>
@@ -59,6 +61,12 @@ void deallocate_table(void* block, std::size_t bytes) noexcept;
 void refuse_large_pages(bool refused) noexcept;
 
 }  // namespace detail
+
+// For the benchmark: the bytes of every block this process has been granted
+// on large pages so far, counted where the platform says so when it grants
+// them. Only Windows does; Linux backs a block with large pages page by
+// page, later, and counts them only in /proc/vmstat, so there this is 0.
+[[nodiscard]] std::uint64_t large_page_bytes_granted() noexcept;
 
 // Blocks for `count` elements of T, in the shape of a standard allocator's
 // allocate() and deallocate(). It has no state.

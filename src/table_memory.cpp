@@ -11,11 +11,14 @@
 //   Windows   VirtualAlloc(MEM_LARGE_PAGES), which needs the "Lock pages in
 //             memory" privilege; an administrator must grant it, and it is
 //             off by default. Without it, VirtualAlloc with ordinary pages.
+//             Each block granted large pages is counted, for
+//             large_page_bytes_granted().
 //   Elsewhere ordinary memory.
 #include "model/table_allocator.hpp"
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <new>
 
@@ -36,14 +39,24 @@ namespace {
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<bool> g_large_pages_refused{false};
 
+// What large_page_bytes_granted() reports.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+std::atomic<std::uint64_t> g_large_page_bytes_granted{0};
+
 constexpr std::align_val_t kCacheLineAlignment{kCacheLineBytes};
 
+#if defined(_WIN32) || defined(__linux__)
+
 // `bytes` rounded up to a multiple of `unit`, a power of two. Throws
-// std::bad_alloc if that does not fit in a std::size_t.
+// std::bad_alloc if that does not fit in a std::size_t. Only the platforms
+// with large pages round, so only they have it: elsewhere it would be an
+// unused function, which is a warning.
 std::size_t round_up(std::size_t bytes, std::size_t unit) {
     if (bytes > std::numeric_limits<std::size_t>::max() - (unit - 1)) throw std::bad_alloc();
     return (bytes + (unit - 1)) & ~(unit - 1);
 }
+
+#endif
 
 #ifdef _WIN32
 
@@ -83,7 +96,10 @@ void* allocate_large(std::size_t bytes) {
         const std::size_t rounded = round_up(bytes, GetLargePageMinimum());
         void* block = VirtualAlloc(nullptr, rounded, MEM_RESERVE | MEM_COMMIT | MEM_LARGE_PAGES,
                                    PAGE_READWRITE);
-        if (block != nullptr) return block;
+        if (block != nullptr) {
+            g_large_page_bytes_granted += rounded;
+            return block;
+        }
         // Physical memory too fragmented for large pages: ordinary ones.
     }
     void* block = VirtualAlloc(nullptr, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -148,3 +164,11 @@ void refuse_large_pages(bool refused) noexcept {
 }
 
 }  // namespace cpress::model::detail
+
+namespace cpress::model {
+
+std::uint64_t large_page_bytes_granted() noexcept {
+    return detail::g_large_page_bytes_granted;
+}
+
+}  // namespace cpress::model
