@@ -13,7 +13,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | 2 | Context mixing | under 25 MB (22.5 MB) | done |
 | 3 | lpaq-class model | 20 MB or better (19.7 MB) | done |
 | 4 | Performance | same archive; compress 25%, decompress 10% faster (32%, 18%) | done |
-| 5 | Market data | beat column-split + zstd | 6–8 weeks |
+| 5 | Market data | 4.00 bytes per message or better; 45% under column-split + zstd | 6–8 weeks |
 | 6 | Release | write-up published | 2 weeks |
 
 ## How stages run
@@ -114,32 +114,50 @@ stage 6.
 
 ## Stage 5: market data
 
-Three parts, each useful alone.
+Brief: [stage-5.md](stage-5.md).
 
-**5a. Parser and baselines.**
-- An ITCH 5.0 message parser and per-message-type statistics.
+One day of the NASDAQ TotalView-ITCH 5.0 feed: 268,744,780 messages,
+8.25 GB. Three parts, each useful alone.
+
+**5a. Schema, benchmark and baselines.**
+- The ITCH 5.0 message schema as a table, and per-message-type statistics.
 - Baselines on the same file: gzip -9, zstd -19, xz -9, cpress's text model,
   and the fair baseline: split each field into its own column, delta-encode
   where sensible, compress each column with zstd.
 
 **5b. Structured model.**
-- Contexts keyed by message type and field position.
-- Timestamps and order reference numbers coded as deltas.
-- An order table: a cancel or execution is predicted from the order it
-  refers to.
-- A per-stock book: prices are coded relative to the best bid and ask.
+- Each field coded as its difference from what the messages so far lead
+  the model to expect, through the history tables, mixer and APM of stages
+  2 and 3, in contexts keyed by message type and field.
+- Timestamps, order reference numbers and match numbers coded as
+  differences.
+- An order table: a cancel, execution or replace names its order by its
+  place among the stock's live orders, and is predicted from the order.
+- The stock itself coded by how recently it was last seen.
 
 **5c. Streaming.**
-- Day files reach about 13 GB, so the whole-file-in-memory I/O from stage 0
-  is replaced by streaming for this codec.
+- The day file does not fit the whole-file-in-memory I/O from stage 0, so
+  codec 4 compresses and decompresses file to file.
 
-**Exit:** a measured, reproducible comparison against every baseline in
-bytes per message and MB/s. If the structured model beats the fair baseline
-by less than 10% while being far slower, that is the result and the write-up
-reports it as such.
+**Exit:** on the day file, 4.00 bytes per message or better, and at least
+45% smaller than the fair baseline, in a measured, reproducible comparison
+against every baseline in bytes per message and MB/s; and the same
+comparison on a second day.
 
-**Data:** NASDAQ publishes sample day files; see `corpus/README.md`. Start
-with the 12,012-message test file, then slices of a full day.
+**Data:** NASDAQ publishes sample day files; see `corpus/README.md`.
+Development uses the first 30,000,000 messages of the day; the exit is on
+all of it.
+
+The brief settles what this section left open, by measurement. The fair
+baseline is 8.04 bytes per message and xz 9.26; a prototype of the design
+made 3.88 and decoded the whole day back. Differences are worth 35% of
+the model's size and the order table 14% more. The per-stock book this
+section planned, for coding prices against the best bid and ask, is worth
+0.5% and is left out. The codec decompresses at about 4 MB/s, a small
+fraction of any baseline's speed; that is part of the result. The
+12,012-message test file this section once named is not in NASDAQ's
+listing. Blocks and threads, which issue #4 left to this stage, stay out:
+an order message depends on an order added hours before.
 
 ## Stage 6: release
 
