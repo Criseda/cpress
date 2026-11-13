@@ -23,9 +23,10 @@ the current stage before implementing anything. Both are binding.
 ## Where things stand
 
 Stages 0 to 4 are done and tagged (`v0.1` to `v0.4`). Stage 5 is next; its
-brief, `docs/stage-5.md`, is not written yet.
+brief is `docs/stage-5.md`.
 Update this line and the README roadmap when a stage is tagged.
-Stage targets are sizes on `corpus/enwik8` (100 MB); see `corpus/README.md`.
+Stage targets are sizes on `corpus/enwik8` (100 MB), and stage 5's on an ITCH
+day file (8.25 GB); see `corpus/README.md`.
 
 ## Commands
 
