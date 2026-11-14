@@ -75,7 +75,9 @@ inline constexpr std::uint8_t kSell = 1;
 
 // For the benchmark: the orders evicted from the order table of every
 // compression this process has finished. A table too small for its file
-// shows here. Defined in src/codecs.cpp.
+// shows here. Like model::large_page_bytes_granted(), it counts for the
+// whole process, so a caller takes the difference across what it measures.
+// Defined in src/codecs.cpp, where codec 4 adds each compression's count.
 [[nodiscard]] std::uint64_t evictions_recorded() noexcept;
 
 class OrderTable {
@@ -165,17 +167,24 @@ public:
         return entries_[index];
     }
 
-    // The place of `reference` among the stock's live orders, if it is
-    // within `limit` of the newest; otherwise `limit`. At most `limit`
-    // steps.
-    [[nodiscard]] std::uint32_t place_of(std::uint16_t locate, std::uint64_t reference,
-                                         std::uint32_t limit) const noexcept {
+    // Where place_of() found an order.
+    struct Placed {
+        std::uint32_t place;  // steps from the stock's newest, or the limit
+        Order* order;         // the order at that place, or nullptr at the limit
+    };
+
+    // The place of `reference` among the stock's live orders and the order
+    // there, if it is within `limit` of the newest; otherwise `limit` and no
+    // order. At most `limit` steps: the order comes from the same walk, so
+    // a caller that wants both does not walk again with at().
+    [[nodiscard]] Placed place_of(std::uint16_t locate, std::uint64_t reference,
+                                  std::uint32_t limit) noexcept {
         std::uint32_t index = lists_[locate].newest;
         for (std::uint32_t place = 0; place < limit && index != kNone; ++place) {
-            if (entries_[index].reference == reference) return place;
+            if (entries_[index].reference == reference) return {place, &entries_[index]};
             index = entries_[index].older;
         }
-        return limit;
+        return {limit, nullptr};
     }
 
     // Orders removed to make room for another.

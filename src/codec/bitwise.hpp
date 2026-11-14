@@ -58,9 +58,11 @@ namespace detail {
 }
 
 // Throws unless `output_bytes` of output could come from `payload_bytes` of
-// payload.
-inline void require_within_expansion(std::uint64_t output_bytes, std::uint64_t payload_bytes) {
-    if (output_bytes > saturating_multiply(payload_bytes, kMaxExpansion)) {
+// payload, at most `max_expansion` bytes for each: kMaxExpansion for the
+// codecs here, and a ceiling of its own for a codec that codes otherwise.
+inline void require_within_expansion(std::uint64_t output_bytes, std::uint64_t payload_bytes,
+                                     std::uint64_t max_expansion) {
+    if (output_bytes > saturating_multiply(payload_bytes, max_expansion)) {
         throw Error("corrupt archive: header claims more data than the payload can hold");
     }
 }
@@ -122,7 +124,7 @@ void encode_bitwise(ByteView input, Bytes& output) {
 template <model::Predictor P>
 void decode_bitwise(P& predictor, ByteView payload, std::uint64_t original_size, Bytes& output) {
     const std::uint64_t payload_size = payload.size();
-    detail::require_within_expansion(original_size, payload_size);
+    detail::require_within_expansion(original_size, payload_size, kMaxExpansion);
 
     // original_size is still only a claim: a corrupt header can pass the
     // check above and ask for kMaxExpansion times the payload. Reserve no
@@ -140,7 +142,7 @@ void decode_bitwise(P& predictor, ByteView payload, std::uint64_t original_size,
         // claim at the ceiling fails here as soon as the payload is spent
         // any faster than the ceiling allows, which is within a few bytes.
         const std::uint64_t payload_left = payload_size - decoder.consumed() + coder::kCodeBytes;
-        detail::require_within_expansion(original_size - decoded, payload_left);
+        detail::require_within_expansion(original_size - decoded, payload_left, kMaxExpansion);
 
         if constexpr (model::Prefetching<P>) predictor.prefetch_from_match();
         int byte = 0;

@@ -93,15 +93,6 @@ inline constexpr std::size_t kBlockBytes = std::size_t{1} << 20;
 
 namespace detail {
 
-// Throws unless `output_bytes` of output could come from `payload_bytes` of
-// payload.
-inline void require_within_message_expansion(std::uint64_t output_bytes,
-                                             std::uint64_t payload_bytes) {
-    if (output_bytes > saturating_multiply(payload_bytes, kMaxMessageExpansion)) {
-        throw Error("corrupt archive: header claims more data than the payload can hold");
-    }
-}
-
 // The input from the current position on, read from a source a block at a
 // time. ahead() always holds the whole of the next message, or everything
 // that is left if that is less.
@@ -236,14 +227,15 @@ inline void decode_messages(itch::MessageModel& model, ByteView payload,
                             std::uint64_t original_size, ByteSink& output,
                             std::size_t block_bytes = kBlockBytes) {
     const std::uint64_t payload_size = payload.size();
-    detail::require_within_message_expansion(original_size, payload_size);
+    detail::require_within_expansion(original_size, payload_size, kMaxMessageExpansion);
 
     DecodingCoder coder(payload);
     detail::OutputBlocks decoded(output, block_bytes);
     std::uint64_t produced = 0;
     while (produced < original_size) {
         const std::uint64_t payload_left = payload_size - coder.consumed() + coder::kCodeBytes;
-        detail::require_within_message_expansion(original_size - produced, payload_left);
+        detail::require_within_expansion(original_size - produced, payload_left,
+                                         kMaxMessageExpansion);
 
         Bytes& block = decoded.block();
         const std::uint32_t type = model.code_type(coder, 0);

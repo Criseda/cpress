@@ -147,6 +147,9 @@ void test_full_bucket_evicts_the_smallest_reference() {
     CHECK(!(table == deleted));
 }
 
+// place_of() gives the place at() walks to, and the same order: within a
+// limit, just inside one and at one. Beyond the limit, or for an order the
+// stock does not have, it gives the limit and no order.
 void test_place_of_and_at_agree() {
     constexpr std::uint16_t kLocate = 12;
     constexpr std::uint16_t kNeighbour = 13;
@@ -159,21 +162,30 @@ void test_place_of_and_at_agree() {
     table.add(9'999, 100, 5'000, kNeighbour, itch::kBuy);  // another stock's
 
     std::size_t disagreements = 0;
+    const auto disagree = [](OrderTable::Placed placed, std::uint32_t place, const Order* order) {
+        return placed.place != place || placed.order != order;
+    };
     for (std::uint32_t place = 0; place < kOrders; ++place) {
-        const std::uint64_t reference = table.at(kLocate, place).reference;
-        if (table.place_of(kLocate, reference, kOrders) != place) ++disagreements;
+        Order& order = table.at(kLocate, place);
+        const std::uint64_t reference = order.reference;
+        if (disagree(table.place_of(kLocate, reference, kOrders), place, &order)) ++disagreements;
         // Just inside a limit, and just outside it.
-        if (table.place_of(kLocate, reference, place + 1) != place) ++disagreements;
-        if (table.place_of(kLocate, reference, place) != place) ++disagreements;
+        if (disagree(table.place_of(kLocate, reference, place + 1), place, &order)) {
+            ++disagreements;
+        }
+        if (disagree(table.place_of(kLocate, reference, place), place, nullptr)) ++disagreements;
     }
     CHECK(disagreements == 0);
 
     constexpr std::uint32_t kLimit = 10;
-    CHECK(table.place_of(kLocate, 1, kLimit) == kLimit);        // not there
-    CHECK(table.place_of(kLocate, 9'999, kOrders) == kOrders);  // in another stock
-    CHECK(table.place_of(kLocate, 500, kLimit) == kLimit);      // the oldest: beyond the limit
-    CHECK(table.place_of(kLocate, 500, 0) == 0);
-    CHECK(table.place_of(kEmpty, 500, kLimit) == kLimit);  // a stock with no orders
+    const auto not_found = [](OrderTable::Placed placed, std::uint32_t limit) {
+        return placed.place == limit && placed.order == nullptr;
+    };
+    CHECK(not_found(table.place_of(kLocate, 1, kLimit), kLimit));        // not there
+    CHECK(not_found(table.place_of(kLocate, 9'999, kOrders), kOrders));  // in another stock
+    CHECK(not_found(table.place_of(kLocate, 500, kLimit), kLimit));      // the oldest: beyond
+    CHECK(not_found(table.place_of(kLocate, 500, 0), 0));
+    CHECK(not_found(table.place_of(kEmpty, 500, kLimit), kLimit));  // a stock with no orders
 }
 
 // An order added under a reference that is already live replaces it.
@@ -226,9 +238,11 @@ void test_invariant_under_random_operations() {
             for (std::uint32_t place = 0; place < table.live(locate); ++place) {
                 const Order& order = table.at(locate, place);
                 const int added = added_at[order.reference];
+                const OrderTable::Placed placed =
+                    table.place_of(locate, order.reference, table.live(locate));
                 if (!order.in_use || order.locate != locate || added >= newer ||
-                    table.find(order.reference) != &order ||
-                    table.place_of(locate, order.reference, table.live(locate)) != place) {
+                    table.find(order.reference) != &order || placed.place != place ||
+                    placed.order != &order) {
                     ++broken;
                 }
                 newer = added;
