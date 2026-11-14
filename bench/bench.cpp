@@ -404,6 +404,7 @@ int run_one(const Options& options) {
     const fs::path path = options.one;
     const Input input = inspect(path);
     const std::uint64_t large_pages_before = large_page_bytes_so_far();
+    const std::uint64_t evictions_before = cpress::itch::evictions_recorded();
     const std::optional<Measurement> measured =
         codec->encode_stream != nullptr ? measure_streamed(path, input, *codec, options.repeat)
                                         : measure_in_memory(path, *codec, options.repeat);
@@ -448,7 +449,8 @@ int run_one(const Options& options) {
     const double compress_peak_mib = mebibytes(compress_peak_bytes);
     const double large_page_mib = mebibytes(large_page_bytes);
     // Every compression evicts the same orders; this is one compression's.
-    const std::uint64_t evictions = cpress::itch::evictions_recorded() / runs;
+    // The count is the process's, so only what these runs added is theirs.
+    const std::uint64_t evictions = (cpress::itch::evictions_recorded() - evictions_before) / runs;
 
     std::cout << std::left << std::setw(kNameWidth) << path.filename().string() << std::right
               << std::setw(14) << input.size << std::setw(14) << archive_size << std::setw(10)

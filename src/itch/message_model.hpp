@@ -563,8 +563,10 @@ private:
         const std::span<std::uint8_t> bytes = bytes_of(message, fields::kOrderReference);
         const std::uint32_t limit = std::min(market.orders.live(locate), max_walk_);
 
-        std::uint64_t place = limit;
-        if (!C::kDecoding) place = market.orders.place_of(locate, load_big_endian(bytes), limit);
+        // The encoder finds the order on the walk that finds its place.
+        OrderTable::Placed placed{.place = limit, .order = nullptr};
+        if (!C::kDecoding) placed = market_.orders.place_of(locate, load_big_endian(bytes), limit);
+        std::uint64_t place = placed.place;
         const bool same_stock = locate == market.last_locate;
         const Contexts contexts{type, mix(type, locate), mix(type, stock.last_place),
                                 mix(type, market.last_type, same_stock ? 1 : 0)};
@@ -574,9 +576,13 @@ private:
         if (place > limit) return false;
 
         if (place < limit) {
-            // A walk of `place` steps, under max_walk.
-            found.order = &market_.orders.at(locate, found.order_place);
-            if (C::kDecoding) store_big_endian(bytes, found.order->reference);
+            if (C::kDecoding) {
+                // A walk of `place` steps, under max_walk.
+                found.order = &market_.orders.at(locate, found.order_place);
+                store_big_endian(bytes, found.order->reference);
+            } else {
+                found.order = placed.order;
+            }
             return true;
         }
         const std::uint64_t reference =
