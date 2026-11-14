@@ -870,7 +870,18 @@ streamed, for a caller that has the archive in memory and wants no file.
 `compress_file` also writes under a temporary name and renames at the
 end, as `decompress_file` does: it cannot hold its output to write it
 last, as the command-line tool used to, so without it a failed `cpress c
--f` would destroy the file it was to replace.
+-f` would destroy the file it was to replace. The temporary file is in a
+directory of its own, created beside the output: C++20 has no way to
+create a file only if no file has its name, but creating a directory
+fails if the name is taken, so two runs cannot write to one temporary
+file and a file that already had the name is never truncated. And
+because the output is renamed into place, `-f` replaces the file at the
+output's name rather than writing into it: a symbolic link there becomes
+a regular file and its target is unchanged, other hard links to the old
+file keep the old contents, and the new file has the permissions of any
+new file. That is the price of never leaving a half-written output; a
+file that must be written through a link can be written to a new name
+and copied.
 
 **The trade-off.** The simplest change would have been to leave I/O alone
 and benchmark on slices. Then the stage's number would be about a slice,
@@ -968,8 +979,10 @@ timestamps that only grow.
     sanitizer build was a Debug build at `-O0`, which ran the new tests
     sixty to seventy times slower than Release, and the suite was stopped
     after a quarter of an hour, not finished. `CPRESS_SANITIZE` now also
-    compiles at `-O1`, which keeps the asserts, and the suite takes 3
-    minutes 38 seconds, run alone (GCC 13.3, WSL 2).
+    compiles a build type that does not optimize at `-O1`, which keeps the
+    asserts, and the suite takes 3 minutes 38 seconds, run alone (GCC 13.3,
+    WSL 2). A Release build with sanitizers keeps its own level, so the
+    code is still checked as it is optimized when it ships.
 
 **Streaming**
 

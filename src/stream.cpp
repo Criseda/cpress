@@ -13,7 +13,6 @@
 #include <span>
 #include <string>
 #include <system_error>
-#include <utility>
 
 namespace cpress {
 namespace {
@@ -112,34 +111,6 @@ private:
     std::uint64_t bytes_ = 0;
 };
 
-// Removes a file when it goes out of scope, unless keep() was called: for
-// output that must not be left behind half written.
-class RemoveUnlessKept {
-public:
-    explicit RemoveUnlessKept(fs::path path) : path_(std::move(path)) {}
-    // Owns the duty to remove one file: not copied, and the destructor is
-    // the point of it.
-    RemoveUnlessKept(const RemoveUnlessKept&) = delete;
-    RemoveUnlessKept& operator=(const RemoveUnlessKept&) = delete;
-    RemoveUnlessKept(RemoveUnlessKept&&) = delete;
-    RemoveUnlessKept& operator=(RemoveUnlessKept&&) = delete;
-    // Only a file: if the output could not be created because the name is
-    // a directory's, the directory is not this object's to remove.
-    ~RemoveUnlessKept() {
-        if (kept_) return;
-        std::error_code ignored;
-        if (fs::is_regular_file(path_, ignored)) fs::remove(path_, ignored);
-    }
-
-    void keep() noexcept {
-        kept_ = true;
-    }
-
-private:
-    fs::path path_;
-    bool kept_ = false;
-};
-
 std::uint64_t size_of_regular_file(const fs::path& path) {
     std::error_code ec;
     if (!fs::is_regular_file(path, ec)) {
@@ -150,27 +121,65 @@ std::uint64_t size_of_regular_file(const fs::path& path) {
     return size;
 }
 
-// A name beside `output` that no file has, for the output to be written
-// under until it is complete: `output` with ".cpress-tmp" after it, and a
-// number after that if a file already has the name.
-fs::path temporary_beside(const fs::path& output) {
+// Creates a directory beside `output` for the output to be written in
+// until it is complete, and returns its path: `output` with ".cpress-tmp"
+// after it, and a number after that if the name is taken. Creating a
+// directory fails if anything has its name, so the directory is this call's
+// alone: two runs never write to the same temporary file, and nothing that
+// was there is touched.
+fs::path create_directory_beside(const fs::path& output) {
     constexpr int kTries = 100;
     for (int i = 0; i < kTries; ++i) {
-        fs::path temporary = output;
-        temporary += ".cpress-tmp";
-        if (i > 0) temporary += std::to_string(i);
+        fs::path directory = output;
+        directory += ".cpress-tmp";
+        if (i > 0) directory += std::to_string(i);
         std::error_code ec;
-        if (!fs::exists(temporary, ec) && !ec) return temporary;
+        if (fs::create_directory(directory, ec)) return directory;
+        // A name is taken by anything, a broken symbolic link included.
+        std::error_code ignored;
+        if (!fs::exists(fs::symlink_status(directory, ignored))) {
+            throw Error("cannot write '" + output.string() + "': " + ec.message());
+        }
     }
     throw Error("cannot find a free temporary name beside '" + output.string() + "'");
 }
 
-// Moves a complete file into place, replacing any file there.
-void rename_into_place(const fs::path& temporary, const fs::path& output) {
-    std::error_code ec;
-    fs::rename(temporary, output, ec);
-    if (ec) throw Error("cannot write '" + output.string() + "': " + ec.message());
-}
+// The file an output is written as until it is complete, in a directory of
+// its own beside the output. Both are removed when it goes out of scope:
+// after a failure the file is still there, and after rename_to() only the
+// empty directory is.
+class TemporaryOutput {
+public:
+    explicit TemporaryOutput(const fs::path& output)
+        : directory_(create_directory_beside(output)), file_(directory_ / "partial") {}
+    // Owns a directory on disk: not copied, and removing it is the
+    // destructor's job.
+    TemporaryOutput(const TemporaryOutput&) = delete;
+    TemporaryOutput& operator=(const TemporaryOutput&) = delete;
+    TemporaryOutput(TemporaryOutput&&) = delete;
+    TemporaryOutput& operator=(TemporaryOutput&&) = delete;
+    ~TemporaryOutput() {
+        std::error_code ignored;
+        fs::remove(file_, ignored);
+        fs::remove(directory_, ignored);
+    }
+
+    [[nodiscard]] const fs::path& file() const noexcept {
+        return file_;
+    }
+
+    // Moves the complete file to `output`, replacing the file there rather
+    // than writing into it.
+    void rename_to(const fs::path& output) const {
+        std::error_code ec;
+        fs::rename(file_, output, ec);
+        if (ec) throw Error("cannot write '" + output.string() + "': " + ec.message());
+    }
+
+private:
+    fs::path directory_;
+    fs::path file_;
+};
 
 [[noreturn]] void throw_changed_size(const fs::path& input) {
     throw Error("'" + input.string() + "' changed size while it was being read");
@@ -178,14 +187,13 @@ void rename_into_place(const fs::path& temporary, const fs::path& output) {
 
 }  // namespace
 
-// The archive is written under a temporary name and renamed at the end, so
-// a compression that fails leaves any file that was at `output` as it was.
+// The archive is written as a temporary file and renamed at the end, so a
+// compression that fails leaves any file that was at `output` as it was.
 void compress_file(const fs::path& input, const fs::path& output, const Codec& codec) {
     const std::uint64_t size = size_of_regular_file(input);
-    const fs::path temporary = temporary_beside(output);
-    RemoveUnlessKept guard(temporary);
+    const TemporaryOutput temporary(output);
     {
-        FileSink archive(temporary);
+        FileSink archive(temporary.file());
         // The CRC-32 of the input is not known until it has been read, so
         // the header goes out with a zero in its place, which is put right
         // at the end.
@@ -209,8 +217,7 @@ void compress_file(const fs::path& input, const fs::path& output, const Codec& c
                         std::span(header).subspan(detail::kCrcOffset, detail::kCrcBytes));
         archive.close();
     }
-    rename_into_place(temporary, output);
-    guard.keep();
+    temporary.rename_to(output);
 }
 
 void decompress(ByteView archive, ByteSink& output) {
@@ -239,15 +246,13 @@ void decompress(ByteView archive, ByteSink& output) {
 
 void decompress_file(const fs::path& archive, const fs::path& output) {
     const Bytes bytes = read_file(archive);
-    const fs::path temporary = temporary_beside(output);
-    RemoveUnlessKept guard(temporary);
+    const TemporaryOutput temporary(output);
     {
-        FileSink data(temporary);
+        FileSink data(temporary.file());
         decompress(bytes, data);
         data.close();
     }
-    rename_into_place(temporary, output);
-    guard.keep();
+    temporary.rename_to(output);
 }
 
 }  // namespace cpress

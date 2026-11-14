@@ -41,12 +41,15 @@ if(CPRESS_SANITIZE)
     if(MSVC)
         message(FATAL_ERROR "CPRESS_SANITIZE supports GCC and Clang only")
     endif()
-    # -O1 comes after the build type's own level and replaces it. At -O0
-    # the stage 5 tests run sixty to seventy times slower than in a release
-    # build, and the suite is far over its budget of five minutes; at -O1
-    # the asserts of a Debug build are still on. (Stage 5 brief, test 23.)
+    # A build type that does not optimize (Debug, or none) is raised to -O1.
+    # At -O0 the stage 5 tests run sixty to seventy times slower than in a
+    # release build, and the suite is far over its budget of five minutes;
+    # at -O1 the asserts of a Debug build are still on. (Stage 5 brief, test
+    # 23.) The optimized build types keep their own level, so a Release
+    # build is checked at the level it ships at.
     add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all
-        -fno-omit-frame-pointer -O1)
+        -fno-omit-frame-pointer
+        $<$<NOT:$<CONFIG:Release,RelWithDebInfo,MinSizeRel>>:-O1>)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
