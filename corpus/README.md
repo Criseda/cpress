@@ -62,3 +62,12 @@ xz and a POSIX shell (WSL or Git Bash on Windows). Check two things first:
   of one core: the compressors of the whole file, `mix9`, and a pass over
   the file for each of its 320 columns. Expect about sixteen hours for the
   day file.
+
+`--jobs N` runs up to N of those at once, each still on one core, and needs
+bash 4.3 or later. The time is then that of the longest, `zstd --ultra
+-22`, given cores for the columns beside it: on the day file, with
+`--jobs 12`, 2 hours 31 minutes. The scratch directory can hold every
+whole-file compressor's output at once, about one and a half times the
+file's size. The sizes are the same; the wall-clock speeds are not, since
+the jobs share the caches and memory, so take speeds from a run with
+`--jobs 1`.

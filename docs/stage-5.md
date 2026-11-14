@@ -363,6 +363,15 @@ the file on the Windows disk: 78 minutes for the whole-file compressors
 and `mix9`, 23 for `zstd` on its 320 columns, and the rest the passes over
 the file. Scaled to the day, that is about sixteen hours.
 
+*Amended in implementation:* sixteen hours of one core is a long time
+for a machine with sixteen. `baselines.sh --jobs N` runs up to N of the
+baselines and columns at once, each still on one core, so every
+command above is unchanged and so is every size. On the day, with
+`--jobs 12`, it took 2 hours 31 minutes, the time of `zstd --ultra -22`
+alone. What sharing changes is the wall-clock speed of the whole-file
+compressors, which is lower than each would be alone; speeds for the
+README come from a run with `--jobs 1`.
+
 ## 3. Field coder
 
 A message becomes a sequence of **symbols**, each a nibble or a byte. A
