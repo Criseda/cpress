@@ -72,7 +72,8 @@ target_link_libraries(cpress PRIVATE cpress_core cpress_warnings)
 
 # Benchmark runner.
 add_executable(cpress-bench bench/bench.cpp bench/platform.cpp)
-# src/ for model/table_allocator.hpp: how much memory went on large pages.
+# src/ for model/table_allocator.hpp, how much memory went on large pages, and
+# for message_file.hpp's window and file source.
 target_include_directories(cpress-bench PRIVATE src)
 target_link_libraries(cpress-bench PRIVATE cpress_core cpress_warnings)
 if(WIN32)
@@ -81,7 +82,8 @@ endif()
 
 # The fair baseline's column splitter (bench/baselines.sh).
 add_executable(cpress-columns bench/columns.cpp bench/platform.cpp)
-# src/ for itch/schema.hpp: the message layouts.
+# src/ for itch/schema.hpp, the message layouts, and for message_file.hpp's
+# window and file source.
 target_include_directories(cpress-columns PRIVATE src)
 target_link_libraries(cpress-columns PRIVATE cpress_core cpress_warnings)
 if(WIN32)

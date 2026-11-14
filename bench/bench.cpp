@@ -20,6 +20,7 @@
 // output was the same as well as how large it was, and how much of each
 // model the operating system put on large pages, which the speed depends on
 // and the program cannot choose.
+#include "checked_stream.hpp"
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
 #include "cpress/stream.hpp"
@@ -96,21 +97,21 @@ bool parse(int argc, char** argv, Options& options) {
             target = argv[++i];
             return true;
         };
-        auto count = [&](std::optional<int>& target) {
+        auto count = [&]() -> std::optional<int> {
             std::string text;
-            if (!value(text)) return false;
-            target = parse_count(text);
-            return target.has_value();
+            if (!value(text)) return {};
+            return parse_count(text);
         };
         if (arg == "--codec") {
             if (!value(options.codec)) return false;
         } else if (arg == "--csv") {
             if (!value(options.csv)) return false;
         } else if (arg == "--cpu") {
-            if (!count(options.cpu)) return false;
+            options.cpu = count();
+            if (!options.cpu) return false;
         } else if (arg == "--repeat") {
-            std::optional<int> repeat;
-            if (!count(repeat) || *repeat < 1 || *repeat > kMaxRepeat) return false;
+            const std::optional<int> repeat = count();
+            if (!repeat || *repeat < 1 || *repeat > kMaxRepeat) return false;
             options.repeat = *repeat;
         } else if (arg == "--commit") {
             if (!value(options.commit)) return false;
@@ -287,24 +288,10 @@ std::optional<Measurement> measure_in_memory(const fs::path& path, const cpress:
     return result;
 }
 
-// A sink that keeps nothing: the size and the CRC-32 of what it was given.
+// A sink that keeps nothing.
 class DiscardingSink final : public cpress::ByteSink {
 public:
-    void write(cpress::ByteView bytes) override {
-        size_ += bytes.size();
-        crc32_ = cpress::crc32(bytes, crc32_);
-    }
-
-    [[nodiscard]] std::uint64_t size() const noexcept {
-        return size_;
-    }
-    [[nodiscard]] std::uint32_t crc32() const noexcept {
-        return crc32_;
-    }
-
-private:
-    std::uint64_t size_ = 0;
-    std::uint32_t crc32_ = 0;
+    void write(cpress::ByteView /*bytes*/) override {}
 };
 
 // A name in the temporary directory for a file of this process's own,
@@ -351,12 +338,13 @@ std::optional<Measurement> measure_streamed(const fs::path& path, const Input& i
         if (run == 0) result.compress_peak_bytes = platform::peak_memory_bytes();
 
         const cpress::Bytes archive = cpress::read_file(archive_file.path());
-        DiscardingSink restored;
+        DiscardingSink discarded;
+        cpress::detail::ChecksumSink restored(discarded);
         const auto t2 = Clock::now();
         cpress::decompress(archive, restored);
         const auto t3 = Clock::now();
 
-        if (restored.size() != input.size || restored.crc32() != input.crc32) {
+        if (restored.bytes() != input.size || restored.crc() != input.crc32) {
             std::cerr << "cpress-bench: ROUND TRIP MISMATCH\n";
             return {};
         }

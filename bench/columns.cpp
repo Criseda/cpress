@@ -116,6 +116,7 @@ std::optional<Column> column_named(std::string_view name) {
     const std::string_view field_name = name.substr(first_dot + 1, last_dot - first_dot - 1);
     const std::string_view encoding_name = name.substr(last_dot + 1);
 
+    // NOLINTNEXTLINE(readability-qualified-auto): an iterator, a pointer only in some libraries.
     const auto encoding = std::ranges::find(kEncodings, encoding_name, &EncodingName::name);
     if (encoding == kEncodings.end()) return {};
 

@@ -1,8 +1,10 @@
 // MessageFile, the benchmark tools' reader: every message of a file comes
 // back, whole, however the buffer's edges fall; it stops at the first bytes
-// that are not a message; and it sums the CRC-32 of the whole file.
+// that are not a message; it sums the CRC-32 of the whole file; and a file
+// that does not give the bytes its size said is an error.
 #include "check.hpp"
 #include "itch_sample.hpp"
+#include "scratch_directory.hpp"
 
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
@@ -13,40 +15,23 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
+#include <ios>
 #include <iostream>
-#include <random>
 #include <string>
-#include <system_error>
 
 namespace cpress::test {
 namespace {
 
 namespace fs = std::filesystem;
 
-// A file of its own in the temporary directory, removed with this object.
-class ScratchFile {
-public:
-    explicit ScratchFile(const cpress::Bytes& data)
-        : path_(fs::temp_directory_path() /
-                ("cpress-message-file-" + std::to_string(std::random_device{}()))) {
-        cpress::write_file(path_, data);
-    }
-    ScratchFile(const ScratchFile&) = delete;
-    ScratchFile& operator=(const ScratchFile&) = delete;
-    ScratchFile(ScratchFile&&) = delete;
-    ScratchFile& operator=(ScratchFile&&) = delete;
-    ~ScratchFile() {
-        std::error_code ignored;
-        fs::remove(path_, ignored);
-    }
-
-    [[nodiscard]] const fs::path& path() const noexcept {
-        return path_;
-    }
-
-private:
-    fs::path path_;
-};
+// `data` written to a file called `name` in `scratch`.
+fs::path written(const ScratchDirectory& scratch, const cpress::Bytes& data,
+                 const std::string& name = "messages") {
+    const fs::path path = scratch.file(name);
+    cpress::write_file(path, data);
+    return path;
+}
 
 // What reading a file to its first non-message found: the messages, joined,
 // and whether that was the end.
@@ -84,9 +69,9 @@ void test_every_message_comes_back() {
     constexpr std::size_t kMessages = 80'000;
     const cpress::Bytes data = itch_sample({.messages = kMessages, .seed = 0xF11E5});
     CHECK(data.size() > std::size_t{2} << 20);
-    const ScratchFile file(data);
+    const ScratchDirectory scratch;
 
-    const Read read = read_all(file.path());
+    const Read read = read_all(written(scratch, data));
     CHECK(read.count == kMessages);
     CHECK(read.messages == data);
     CHECK(read.at_end);
@@ -112,20 +97,48 @@ void test_stops_at_what_is_not_a_message() {
     Case cut_short{.data = messages, .messages = kMessages - 1};
     cut_short.data.resize(messages.size() - 3);
 
+    const ScratchDirectory scratch;
     for (const Case& c : {junk_after, cut_short}) {
-        const ScratchFile file(c.data);
-        const Read read = read_all(file.path());
+        const Read read = read_all(written(scratch, c.data));
         CHECK(!read.at_end);
         CHECK(read.count == c.messages);
         CHECK(read.bytes_read == c.data.size());
         CHECK(read.crc32 == cpress::crc32(c.data));
     }
 
-    const ScratchFile empty(cpress::Bytes{});
-    const Read read = read_all(empty.path());
+    const Read read = read_all(written(scratch, cpress::Bytes{}, "empty"));
     CHECK(read.count == 0);
     CHECK(read.at_end);
     CHECK(read.bytes_read == 0);
+}
+
+// A file that gives other than the bytes its size said is an error, not a
+// short file: that is how a failed read shows, which the stream may report
+// as the end. Here the file grows after the reader has taken its size.
+void test_a_file_that_changes_is_an_error() {
+    const cpress::Bytes data = itch_sample({.messages = 80'000, .seed = 0xC4A6E});
+    CHECK(data.size() > std::size_t{2} << 20);
+    const ScratchDirectory scratch;
+    const fs::path path = written(scratch, data);
+
+    cpress::bench::MessageFile file(path);
+    CHECK(!file.next().empty());  // the first buffer is read; the rest is not
+    {
+        std::ofstream more(path, std::ios::binary | std::ios::app);
+        const cpress::Bytes tail = itch_sample({.messages = 10, .seed = 0x7A11});
+        more.write(reinterpret_cast<const char*>(tail.data()),
+                   static_cast<std::streamsize>(tail.size()));
+    }
+    CHECK(throws_error([&] { file.read_rest(); }));
+}
+
+// What is not a regular file is refused when it is opened.
+void test_only_a_regular_file_is_read() {
+    const ScratchDirectory scratch;
+    const fs::path directory = scratch.file("a-directory");
+    fs::create_directory(directory);
+    CHECK(throws_error([&] { const cpress::bench::MessageFile file(directory); }));
+    CHECK(throws_error([&] { const cpress::bench::MessageFile file(scratch.file("missing")); }));
 }
 
 }  // namespace
@@ -134,8 +147,8 @@ void run_message_file_tests() {
     try {
         test_every_message_comes_back();
         test_stops_at_what_is_not_a_message();
-        CHECK(
-            throws_error([] { const cpress::bench::MessageFile file("no-such-file-for-cpress"); }));
+        test_a_file_that_changes_is_an_error();
+        test_only_a_regular_file_is_read();
     } catch (const std::exception& e) {
         ++g_failures;
         std::cerr << "message file tests threw: " << e.what() << "\n";
