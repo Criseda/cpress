@@ -1,5 +1,6 @@
 #include "cpress/stream.hpp"
 
+#include "checked_stream.hpp"
 #include "container.hpp"
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
@@ -18,38 +19,6 @@ namespace cpress {
 namespace {
 
 namespace fs = std::filesystem;
-
-// A file read in order. Sums the CRC-32 of what it has given and counts it,
-// since a streamed input is seen only once.
-class FileSource final : public ByteSource {
-public:
-    explicit FileSource(const fs::path& path) : path_(path), file_(path, std::ios::binary) {
-        if (!file_) throw Error("cannot open '" + path.string() + "'");
-    }
-
-    std::size_t read(std::span<std::uint8_t> buffer) override {
-        file_.read(reinterpret_cast<char*>(buffer.data()),
-                   static_cast<std::streamsize>(buffer.size()));
-        const auto count = static_cast<std::size_t>(file_.gcount());
-        if (file_.bad()) throw Error("read from '" + path_.string() + "' failed");
-        crc_ = crc32(buffer.first(count), crc_);
-        bytes_ += count;
-        return count;
-    }
-
-    [[nodiscard]] std::uint32_t crc() const noexcept {
-        return crc_;
-    }
-    [[nodiscard]] std::uint64_t bytes() const noexcept {
-        return bytes_;
-    }
-
-private:
-    fs::path path_;
-    std::ifstream file_;
-    std::uint32_t crc_ = 0;
-    std::uint64_t bytes_ = 0;
-};
 
 // A file written in order, replacing any that was there.
 class FileSink final : public ByteSink {
@@ -86,40 +55,6 @@ private:
     fs::path path_;
     std::ofstream file_;
 };
-
-// Passes bytes on to another sink, summing their CRC-32 and counting them.
-class ChecksumSink final : public ByteSink {
-public:
-    explicit ChecksumSink(ByteSink& next) : next_(&next) {}
-
-    void write(ByteView bytes) override {
-        crc_ = crc32(bytes, crc_);
-        bytes_ += bytes.size();
-        next_->write(bytes);
-    }
-
-    [[nodiscard]] std::uint32_t crc() const noexcept {
-        return crc_;
-    }
-    [[nodiscard]] std::uint64_t bytes() const noexcept {
-        return bytes_;
-    }
-
-private:
-    ByteSink* next_;  // not owned
-    std::uint32_t crc_ = 0;
-    std::uint64_t bytes_ = 0;
-};
-
-std::uint64_t size_of_regular_file(const fs::path& path) {
-    std::error_code ec;
-    if (!fs::is_regular_file(path, ec)) {
-        throw Error("cannot read '" + path.string() + "': not a regular file");
-    }
-    const std::uintmax_t size = fs::file_size(path, ec);
-    if (ec) throw Error("cannot read '" + path.string() + "': " + ec.message());
-    return size;
-}
 
 // Creates a directory beside `output` for the output to be written in
 // until it is complete, and returns its path: `output` with ".cpress-tmp"
@@ -190,7 +125,7 @@ private:
 // The archive is written as a temporary file and renamed at the end, so a
 // compression that fails leaves any file that was at `output` as it was.
 void compress_file(const fs::path& input, const fs::path& output, const Codec& codec) {
-    const std::uint64_t size = size_of_regular_file(input);
+    const std::uint64_t size = detail::size_of_regular_file(input);
     const TemporaryOutput temporary(output);
     {
         FileSink archive(temporary.file());
@@ -200,7 +135,7 @@ void compress_file(const fs::path& input, const fs::path& output, const Codec& c
         archive.write(detail::header_bytes(codec.id, size, 0));
         std::uint32_t crc = 0;
         if (codec.encode_stream != nullptr) {
-            FileSource source(input);
+            detail::FileSource source(input);
             codec.encode_stream(source, size, archive);
             if (source.bytes() != size) throw_changed_size(input);
             crc = source.crc();
@@ -225,7 +160,7 @@ void decompress(ByteView archive, ByteSink& output) {
     const Codec& codec = detail::codec_of(header);
     const ByteView payload = archive.subspan(kHeaderSize);
 
-    ChecksumSink checked(output);
+    detail::ChecksumSink checked(output);
     if (codec.decode_stream != nullptr) {
         codec.decode_stream(payload, header.original_size, checked);
     } else {

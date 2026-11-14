@@ -3,6 +3,7 @@
 // archive leaves nothing behind.
 #include "check.hpp"
 #include "itch_sample.hpp"
+#include "scratch_directory.hpp"
 
 #include "codec/buffer_stream.hpp"
 #include "codec/messages.hpp"
@@ -18,56 +19,15 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
-#include <random>
 #include <span>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <vector>
 
 namespace cpress::test {
 namespace {
 
 namespace fs = std::filesystem;
-
-// A directory of its own for the files a test writes, removed with
-// everything in it when the test ends.
-class ScratchDirectory {
-public:
-    ScratchDirectory()
-        : path_(fs::temp_directory_path() /
-                ("cpress-tests-" + std::to_string(std::random_device{}()))) {
-        fs::create_directories(path_);
-    }
-    // Owns a directory on disk: not copied, and removing it is the
-    // destructor's job.
-    ScratchDirectory(const ScratchDirectory&) = delete;
-    ScratchDirectory& operator=(const ScratchDirectory&) = delete;
-    ScratchDirectory(ScratchDirectory&&) = delete;
-    ScratchDirectory& operator=(ScratchDirectory&&) = delete;
-    // NOLINTNEXTLINE(bugprone-exception-escape): only allocation failure can throw here.
-    ~ScratchDirectory() {
-        std::error_code ignored;
-        fs::remove_all(path_, ignored);
-    }
-
-    [[nodiscard]] fs::path file(const std::string& name) const {
-        return path_ / name;
-    }
-
-    // The names of the files in it, sorted.
-    [[nodiscard]] std::vector<std::string> names() const {
-        std::vector<std::string> found;
-        for (const fs::directory_entry& entry : fs::directory_iterator(path_)) {
-            found.push_back(entry.path().filename().string());
-        }
-        std::ranges::sort(found);
-        return found;
-    }
-
-private:
-    fs::path path_;
-};
 
 // The archive compress_file() makes of `data` and what decompress_file()
 // makes of that, both through files.

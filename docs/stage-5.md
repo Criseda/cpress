@@ -93,9 +93,11 @@ src/itch/market.hpp           Market: everything the messages so far imply
 src/itch/message_model.hpp    MessageModel: codes one message, either direction
 src/codec/two_way.hpp         the TwoWayCoder concept; EncodingCoder, DecodingCoder
 src/codec/messages.hpp        the message driver: framing, the escape, the size rules
+src/codec/input_window.hpp    the look-ahead that holds the whole of the next message
 src/codec/buffer_stream.hpp   a buffer as a ByteSource, a vector as a ByteSink
 src/codecs.cpp                registers codec 4
 src/container.hpp             the header's bytes, shared by container.cpp and stream.cpp
+src/checked_stream.hpp        a file source and a sink that count and checksum
 include/cpress/stream.hpp     ByteSource, ByteSink; compress_file, decompress_file
 src/stream.cpp
 src/cli/main.cpp              uses the file functions
@@ -110,6 +112,7 @@ tests/order_table_test.cpp
 tests/message_model_test.cpp
 tests/stream_test.cpp
 tests/itch_sample.hpp, .cpp   the generator of section 9's messages
+tests/scratch_directory.hpp   a directory of its own for the files a test writes
 tests/roundtrip.cpp           checksums and thresholds for itch; a synthetic ITCH sample
 corpus/README.md              the day file: where from, its size and checksum
 ```
@@ -125,6 +128,15 @@ so far, so that data can be checksummed in pieces; `Codec` has the two
 members of section 8; and `stream.hpp` has `decompress(archive, sink)`,
 which is `decompress_file` without the files and is what `cpress-bench`
 times.
+
+*Amended after review:* `message_file.hpp` had its own copy of the
+codec's look-ahead and of the file source, and took a failed read for the
+end of the file. Both now have headers of their own, `input_window.hpp`
+and `checked_stream.hpp`, which the codec, the streaming functions and the
+benchmark tools share; and the tools check that a file gave the bytes its
+size said, since a stream can report a failed read as the end of the file
+(libc++ does, reading a directory). The two test files that write files
+share `scratch_directory.hpp`.
 
 ## The data
 
