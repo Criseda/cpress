@@ -14,6 +14,9 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include <fcntl.h>
+#include <io.h>
 // psapi.h must come after windows.h.
 #include <psapi.h>
 #else
@@ -79,6 +82,10 @@ std::uint64_t peak_memory_bytes() {
 
 bool peak_memory_omits_large_pages() {
     return true;
+}
+
+void make_stdout_binary() {
+    _setmode(_fileno(stdout), _O_BINARY);
 }
 
 std::uint64_t huge_page_bytes_faulted() {
@@ -158,6 +165,9 @@ const char* const kNullDevice = "/dev/null";
 bool peak_memory_omits_large_pages() {
     return false;
 }
+
+// Nothing to do: only Windows has text streams that change bytes.
+void make_stdout_binary() {}
 
 std::uint64_t peak_memory_bytes() {
     rusage usage{};

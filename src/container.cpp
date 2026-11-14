@@ -1,7 +1,13 @@
+#include "container.hpp"
+
 #include "cpress/cpress.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <span>
 #include <string>
 
 namespace cpress {
@@ -9,9 +15,9 @@ namespace {
 
 // Explicit little-endian serialisation: the format does not depend on the
 // host's byte order or struct layout.
-void put_le(Bytes& out, std::uint64_t value, int bytes) {
-    for (int i = 0; i < bytes; ++i) {
-        out.push_back(static_cast<std::uint8_t>(value >> (8 * i)));
+void put_le(std::span<std::uint8_t> out, std::uint64_t value) {
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out[i] = static_cast<std::uint8_t>(value >> (8 * i));
     }
 }
 
@@ -24,6 +30,31 @@ std::uint64_t get_le(ByteView in, std::size_t offset, int bytes) {
 }
 
 }  // namespace
+
+namespace detail {
+
+std::array<std::uint8_t, kHeaderSize> header_bytes(std::uint8_t codec_id,
+                                                   std::uint64_t original_size,
+                                                   std::uint32_t crc) noexcept {
+    std::array<std::uint8_t, kHeaderSize> header{};  // the reserved field stays zero
+    const std::span<std::uint8_t> bytes(header);
+    std::ranges::copy(kMagic, bytes.begin());
+    header[4] = kFormatVersion;
+    header[5] = codec_id;
+    put_le(bytes.subspan(8, 8), original_size);
+    put_le(bytes.subspan(kCrcOffset, kCrcBytes), crc);
+    return header;
+}
+
+const Codec& codec_of(const Header& header) {
+    const Codec* codec = find_codec(header.codec_id);
+    if (codec == nullptr) {
+        throw Error("unknown codec id " + std::to_string(header.codec_id));
+    }
+    return *codec;
+}
+
+}  // namespace detail
 
 Header read_header(ByteView archive) {
     if (archive.size() < kHeaderSize) {
@@ -48,14 +79,8 @@ Header read_header(ByteView archive) {
 }
 
 Bytes compress(ByteView input, const Codec& codec) {
-    Bytes out;
-    out.reserve(kHeaderSize);
-    out.insert(out.end(), kMagic.begin(), kMagic.end());
-    out.push_back(kFormatVersion);
-    out.push_back(codec.id);
-    put_le(out, 0, 2);
-    put_le(out, input.size(), 8);
-    put_le(out, crc32(input), 4);
+    const auto header = detail::header_bytes(codec.id, input.size(), crc32(input));
+    Bytes out(header.begin(), header.end());
     codec.encode(input, out);
     return out;
 }
@@ -63,16 +88,13 @@ Bytes compress(ByteView input, const Codec& codec) {
 Bytes decompress(ByteView archive) {
     const Header header = read_header(archive);
 
-    const Codec* codec = find_codec(header.codec_id);
-    if (codec == nullptr) {
-        throw Error("unknown codec id " + std::to_string(header.codec_id));
-    }
+    const Codec& codec = detail::codec_of(header);
     if (header.original_size > std::numeric_limits<std::size_t>::max()) {
         throw Error("archive is too large for this platform");
     }
 
     Bytes out;
-    codec->decode(archive.subspan(kHeaderSize), header.original_size, out);
+    codec.decode(archive.subspan(kHeaderSize), header.original_size, out);
 
     if (out.size() != header.original_size) {
         throw Error("corrupt archive: decoded size does not match the header");

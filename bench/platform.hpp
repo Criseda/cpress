@@ -38,6 +38,10 @@ int run_process(const std::filesystem::path& exe, const std::vector<std::string>
 // removed. Returns an empty string if the command could not be run.
 std::string capture(const std::string& command);
 
+// Stops standard output translating line endings, as it does on Windows,
+// so that bytes written to it arrive as they were written.
+void make_stdout_binary();
+
 // The shell's name for the null device, for discarding stderr in capture().
 extern const char* const kNullDevice;
 

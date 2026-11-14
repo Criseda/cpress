@@ -116,6 +116,13 @@ void run_match_model_tests();
 void run_apm_tests();
 void run_mix9_tests();
 void run_golden_tests();
+void run_itch_schema_tests();
+void run_residual_tests();
+void run_field_coder_tests();
+void run_order_table_tests();
+void run_message_model_tests();
+void run_stream_tests();
+void run_message_file_tests();
 void run_roundtrip_tests(std::span<const char* const> files);
 
 }  // namespace cpress::test

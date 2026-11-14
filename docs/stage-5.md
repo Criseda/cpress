@@ -93,11 +93,14 @@ src/itch/market.hpp           Market: everything the messages so far imply
 src/itch/message_model.hpp    MessageModel: codes one message, either direction
 src/codec/two_way.hpp         the TwoWayCoder concept; EncodingCoder, DecodingCoder
 src/codec/messages.hpp        the message driver: framing, the escape, the size rules
+src/codec/buffer_stream.hpp   a buffer as a ByteSource, a vector as a ByteSink
 src/codecs.cpp                registers codec 4
+src/container.hpp             the header's bytes, shared by container.cpp and stream.cpp
 include/cpress/stream.hpp     ByteSource, ByteSink; compress_file, decompress_file
 src/stream.cpp
 src/cli/main.cpp              uses the file functions
 bench/bench.cpp               messages, bytes per message, MB/s; streams codec 4
+bench/message_file.hpp        a file of messages, read a message at a time
 bench/columns.cpp             cpress-columns: the fair baseline's splitter
 bench/baselines.sh            runs every baseline and prints the table
 tests/itch_schema_test.cpp
@@ -106,12 +109,22 @@ tests/field_coder_test.cpp
 tests/order_table_test.cpp
 tests/message_model_test.cpp
 tests/stream_test.cpp
+tests/itch_sample.hpp, .cpp   the generator of section 9's messages
 tests/roundtrip.cpp           checksums and thresholds for itch; a synthetic ITCH sample
 corpus/README.md              the day file: where from, its size and checksum
 ```
 
 Hot-path code stays header-only. `include/cpress/stream.hpp` is the one
 addition to the public API.
+
+*Amended in implementation:* three files the first draft did not list
+(`buffer_stream.hpp`, `container.hpp`, `message_file.hpp`) and the
+generator in a file of its own, since four test files use it. And the
+public API gains a little more than one header: `crc32` takes the checksum
+so far, so that data can be checksummed in pieces; `Codec` has the two
+members of section 8; and `stream.hpp` has `decompress(archive, sink)`,
+which is `decompress_file` without the files and is what `cpress-bench`
+times.
 
 ## The data
 
@@ -214,7 +227,7 @@ is modelled:
 
 ```cpp
 enum class FieldKind : std::uint8_t {
-    kAlpha, kInteger, kPrice, kLocate, kTracking, kTimestamp, kReference, kMatch
+    Alpha, Integer, Price, Locate, Tracking, Timestamp, Reference, Match
 };
 
 struct Field {
@@ -247,6 +260,11 @@ link is in `docs/idea.md`), not from this brief and not from memory.
 `static_assert` that each layout's fields cover its message exactly once,
 in order, with no gap.
 
+*Amended in implementation:* the enumerators are `Alpha` to `Match`, not
+`kAlpha` to `kMatch`: `.clang-tidy` names enum constants in CamelCase
+without the `k` of constants. The fields' names are the specification's in
+snake case: `order_reference_number`, `buy_sell_indicator`.
+
 ## 2. Benchmark and baselines
 
 **`cpress-bench`** gains three columns: `messages`, the number of
@@ -257,6 +275,15 @@ the ns/byte it already reports. The header changes, so the old-file rule
 of stage 4 applies again. For codec 4 it uses the file functions of
 section 8 and checks the round trip by CRC-32 and size, without holding a
 restored copy.
+
+*Amended in implementation:* two more columns, each asked for by an exit
+criterion. `compress_peak_mem_mib` is the process's peak memory after the
+first compression: `peak_mem_mib` is the larger of the two directions,
+and they differ, since decompression holds the archive. `evictions` is
+the count of section 4. For codec 4 the compression is file to file, into
+the temporary directory, and its time includes reading the input and
+writing the archive; the decompression is of the archive in memory into a
+sink that keeps nothing.
 
 **The baselines** are other people's programs, run as commands. They are
 not dependencies: nothing links them and the build does not need them.
@@ -272,7 +299,7 @@ not dependencies: nothing links them and the build does not need them.
 | the fair baseline | `cpress-columns`, then `zstd -19 -T1` on every column |
 
 **The fair baseline** is what a careful engineer does without writing a
-model. `cpress-columns FILE DIR` writes one file per column:
+model. `cpress-columns` splits the file into columns:
 
 - `type.raw`: the type of every message, one byte each.
 - For every field of every type, `T.field.raw`: its bytes as they are.
@@ -281,10 +308,10 @@ model. `cpress-columns FILE DIR` writes one file per column:
   wrapping; and `T.field.dvar`, the same difference, zigzagged, as a
   LEB128 varint.
 - The three header fields again as one column across all types, in file
-  order: `all.locate`, `all.tracking`, `all.timestamp`, each in the three
-  encodings.
+  order: `all.stock_locate`, `all.tracking_number`, `all.timestamp`, each
+  in the three encodings.
 
-Each file is compressed alone. The baseline's size is the sum, over
+Each column is compressed alone. The baseline's size is the sum, over
 columns, of the smallest of its encodings; each header field is counted
 once, as its per-type columns or as its one column, whichever is smaller.
 The length prefixes are dropped, since the type implies them; the tool
@@ -299,13 +326,30 @@ table.
 `cpress-columns --count FILE` writes nothing and prints each type's count
 and bytes: the table of [The data](#the-data), for any file.
 
-**What it costs to run.** For the day file the columns are about 24 GB,
-three encodings of everything, beside the 8.25 GB file itself; the script
-must compress each column as soon as it is written and delete it, and
-say at the start how much disk it needs. On the development machine the
-whole script is about nine hours of one core, most of it `zstd --ultra
--22` and the columns. Say both in the script's usage text and in
-`corpus/README.md`.
+**What it costs to run.** On the development machine the whole script is
+about nine hours of one core for the day file, most of it `zstd --ultra
+-22` and the columns. Say so, and how much disk it needs, in the script's
+usage text and in `corpus/README.md`.
+
+*Amended in implementation:* the first draft had the tool write every
+column into a directory, `cpress-columns FILE DIR`. For the day file that
+is about 24 GB, three encodings of everything, beside the 8.25 GB file
+itself, on a disk that did not have it. The columns never touch the disk
+now: `cpress-columns --list FILE` prints the names of the file's columns
+and `cpress-columns --column NAME FILE` writes one of them to standard
+output, which the script pipes into `zstd`. The price is a pass over the
+file for each column, about 350 for the day; it is not charged to the
+baseline, whose time is the processor time of `zstd` alone on the
+encodings it ends up counting. What the script does need is about half
+the file's size: the whole-file compressors' output, one at a time, and
+the first 30,000,000 messages, which `cpress-columns --head N FILE OUT`
+cuts, beside their archive.
+
+The nine hours were the prototype's estimate. Measured on the first
+30,000,000 messages, the script takes 2 hours 16 minutes under WSL 2 with
+the file on the Windows disk: 78 minutes for the whole-file compressors
+and `mix9`, 23 for `zstd` on its 320 columns, and the rest the passes over
+the file. Scaled to the day, that is about sixteen hours.
 
 ## 3. Field coder
 
@@ -413,6 +457,18 @@ public:
 Each returns the value coded; when decoding, the value passed in is
 ignored.
 
+*Amended in implementation:* two things. The constructor also takes the
+number of symbols, `FieldCoder(slot_bits, symbols)`: it sizes the mixer's
+weight sets and the APM, and the field coder does not know the message
+model's list. There are 429 symbols. And a decoder can be handed what no
+encoder writes: a length greater than the field's width; a number whose
+first byte is zero, when the length said that byte was needed; a
+remainder of `step` or more. Without a rule, two payloads would decode to
+the same message, and the first would index outside a field. Each is cut
+to something in range, so that decoding stays in bounds, and recorded:
+`valid()` turns false and stays false, and `code_message` returns it
+(section 7, rule 4).
+
 Memory: six history tables of `2^slot_bits` slots, 16 bytes each; six
 state maps; the mixer and the APM above.
 
@@ -432,7 +488,7 @@ directions run the same update.
 |---|---|---|
 | `symbol` | the stock's 8-byte name | `R` |
 | `counter` | which reference counter its last new order used, 0 to 3 | `A`, `F`, `U` |
-| `newest`, `live` | its live orders, newest first, and how many | the order table |
+| its live orders, newest first, and how many | kept by the order table, by locate (amended, below) | the order table |
 | `last_place` | the place the last order message found its order at | `E`, `C`, `X`, `D`, `U` |
 | per side: `last_add_shares` | the shares of the last add | `A`, `F` |
 | `last_side` | the side of the last add | `A`, `F` |
@@ -508,6 +564,22 @@ public:
 A cancel or execution that takes an order's shares to zero removes the
 order, as the specification says a reader of the feed must.
 
+*Amended in implementation:* the table owns each stock's list, its head
+and its count, indexed by locate, and no function takes a `Stock`:
+`add(reference, shares, price, locate, side)`, `remove(order)`,
+`live(locate)`, `at(locate, place)`, `place_of(locate, reference,
+limit)`. In the first draft the head and the count were members of
+`Stock`, so an eviction, which the table decides on its own, had to reach
+into another stock's state to unlink the order it removed. With the lists
+inside the table, "an eviction is exactly a delete" is one function
+calling another, and `OrderTable` can be tested without a `Market`. Two
+more rules a decoder needs: an order added under a reference that is
+already live replaces it (the old one is removed first), and a removal
+uses the order's own locate, not the message's, which may disagree.
+`Stock` is 72 bytes. The whole update is `Market::apply(message, found)`,
+called once at the end of `code_message`; nothing else changes the
+market.
+
 ## 5. Message model
 
 `MessageModel` owns the `FieldCoder` and the `Market`, and codes one
@@ -536,6 +608,10 @@ public:
     [[nodiscard]] std::uint32_t code_escaped_byte(C& coder, std::uint32_t byte) noexcept;
 };
 ```
+
+*Amended in implementation:* the constructor is `MessageModel(level,
+max_walk = kMaxWalk)`. The second argument exists for test 15, which
+needs an encoder that walks further than the decoder allows.
 
 Fields are not coded in the order they have on the wire. The order is
 chosen so that each is coded after what predicts it: the type first, then
@@ -696,8 +772,9 @@ two, three and four bytes of the input. After an escape the last type is
 | 20 | 33,554,432 | 100,663,296 | | 140 MiB |
 | 23 | 268,435,456 | 100,663,296 | | 364 MiB |
 
-  The fixed part is the APM (6.9 MiB at 430 symbols), the 65,536 stocks
-  (about 80 bytes each), the list of stocks, the mixer's weights and the
+  The fixed part is the APM (6.9 MiB at 429 symbols), the 65,536 stocks
+  (72 bytes each), the order table's list heads and counts (8 bytes a
+  locate), the list of stocks, the mixer's weights and the
   maps. `memory_bytes(level)` counts every allocation; test the first two
   columns against this table and the rest against the constants they
   follow from. The day file and its first 30,000,000 messages both get
@@ -710,7 +787,8 @@ two, three and four bytes of the input. After an escape the last type is
   1. the level is in range, checked before anything is constructed;
   2. every decoded type is 0 or has a layout;
   3. a decoded message fits in what is left of `original_size`;
-  4. `code_message` returns true;
+  4. `code_message` returns true: no place beyond the limit, and nothing
+     the field coder marked invalid (section 3);
   5. `original_size` is at most `kMaxMessageExpansion` times the payload
      size, on entry and for what is left after every message;
   6. the decoder never reads past the payload, and consumes it exactly.
@@ -782,6 +860,18 @@ point and codecs 1 to 3 are untouched.
 - **Memory** is the model, the archive when decompressing, and a few
   blocks. Record peak memory for the day in the README.
 
+*Amended in implementation:* `encode_messages` and `decode_messages` take
+the block size as a last argument, 1 MiB unless a test says otherwise, so
+that test 25 can put a block edge inside every message of a small stream
+instead of building megabytes of them. It changes no byte of the payload,
+which that test checks. And `stream.hpp` has a third function,
+`decompress(archive, sink)`: the checks of `decompress()` with the output
+streamed, for a caller that has the archive in memory and wants no file.
+`compress_file` also writes under a temporary name and renames at the
+end, as `decompress_file` does: it cannot hold its output to write it
+last, as the command-line tool used to, so without it a failed `cpress c
+-f` would destroy the file it was to replace.
+
 **The trade-off.** The simplest change would have been to leave I/O alone
 and benchmark on slices. Then the stage's number would be about a slice,
 and a slice is not a day: its first messages refer to orders it never
@@ -837,7 +927,12 @@ timestamps that only grow.
 12. Round trip: the generated stream, coded and decoded, is identical,
     at the smallest level and at one where nothing is evicted.
 13. The market is the same in both directions: after every message, the
-    encoder's and the decoder's `Market` compare equal.
+    encoder's and the decoder's `Market` compare equal. *Amended in
+    implementation:* after each of the first 200 messages, then after
+    every 97th, and at the end. A `Market` is megabytes, and comparing
+    two after each of 30,000 messages took longer than the rest of the
+    suite; a difference that appears between two comparisons is still
+    there at the next, since nothing in the model forgets.
 14. Removing the order table's knowledge costs bits: the same stream
     with its references replaced by random ones still round-trips, and
     is larger by a stated margin.
@@ -864,7 +959,17 @@ timestamps that only grow.
     allocates and zeroes at least 12 MiB, three times `mix9`'s
     smallest, so measure the suite before choosing how many mutations
     codec 4 gets. The budget is stage 3's: 30 seconds in Release, 5
-    minutes with sanitizers.
+    minutes with sanitizers. *Amended in implementation:* codec 4 gets
+    1,500 mutations, of an archive of 100 generated messages and three
+    bytes that are not one, so that damage lands on the fields of a
+    message, the order table and the escape. With MSVC they take 2.7
+    seconds, against 4.0 for `mix9`'s 10,000. The whole suite takes 24
+    seconds with MSVC. Under ASan + UBSan it did not fit at all: the
+    sanitizer build was a Debug build at `-O0`, which ran the new tests
+    sixty to seventy times slower than Release, and the suite was stopped
+    after a quarter of an hour, not finished. `CPRESS_SANITIZE` now also
+    compiles at `-O1`, which keeps the asserts, and the suite takes 3
+    minutes 38 seconds, run alone (GCC 13.3, WSL 2).
 
 **Streaming**
 
@@ -872,7 +977,12 @@ timestamps that only grow.
     `decompress_file` and `decompress()` the same output, for every
     codec.
 25. Block edges: inputs of one byte less than, exactly, and one byte
-    more than a block; a message that straddles two blocks.
+    more than a block; a message that straddles two blocks. *Amended in
+    implementation:* with the block size a parameter (section 8), blocks
+    of 52 bytes, the smallest that holds a message, up to one byte more
+    than the stream, from a source that gives seven bytes at a time; and
+    once through files at the real block size, an input of one block and
+    one byte.
 26. A corrupt archive, a truncated one and one with a wrong CRC leave no
     output file and no temporary file.
 
@@ -1087,6 +1197,12 @@ is the simpler.
 3. 5b: the field coder, the market state, the message model, codec 4
    and their tests, with a row for the first 30,000,000 messages.
 4. 5c: streaming, and the whole-day rows.
+
+*Amended in implementation:* 5a, 5b and 5c landed as one commit, with rows
+for the first 30,000,000 messages. The code was written from the
+prototype in one sitting and the parts were never apart; three commits
+would have been one commit cut in three. The whole-day rows, the second
+day and the ablations are the commit that closes the stage.
 
 ## What review will look at
 

@@ -31,6 +31,13 @@ int main(int argc, char** argv) {
     run_apm_tests();
     run_mix9_tests();
     run_golden_tests();
+    run_itch_schema_tests();
+    run_residual_tests();
+    run_field_coder_tests();
+    run_order_table_tests();
+    run_message_model_tests();
+    run_stream_tests();
+    run_message_file_tests();
     run_roundtrip_tests(files);
 
     std::cout << g_checks << " checks, " << g_failures << " failed\n";

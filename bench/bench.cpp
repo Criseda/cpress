@@ -7,6 +7,11 @@
 // with --one), so the peak-memory figure belongs to that file alone. The
 // figure covers the whole process, including the input and output buffers.
 //
+// A codec that streams is measured file to file, and never holds the input:
+// its benchmark is a day of market data, 8.25 GB. A file that is ITCH
+// messages and nothing else also gets its size per message, which is how
+// market data compressors are compared.
+//
 // Timings on a desktop vary by several percent from run to run, more on a
 // processor with cores of two speeds. --cpu pins the child to one logical
 // processor, and --repeat runs the round trip k times in the child and
@@ -17,6 +22,9 @@
 // and the program cannot choose.
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
+#include "cpress/stream.hpp"
+#include "itch/order_table.hpp"
+#include "message_file.hpp"
 #include "model/table_allocator.hpp"
 #include "platform.hpp"
 
@@ -24,6 +32,7 @@
 #include <array>
 #include <charconv>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <exception>
@@ -32,6 +41,8 @@
 #include <iomanip>
 #include <iostream>
 #include <optional>
+#include <random>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -61,6 +72,8 @@ void print_usage(std::ostream& os) {
           "\n"
           "Compresses and decompresses each file, verifies the round trip and\n"
           "appends one row per file to the CSV (default: bench-results.csv).\n"
+          "A codec that streams (itch) is run file to file: its archive goes to\n"
+          "the temporary directory and is removed afterwards.\n"
           "\n"
           "  --cpu <n>     run on logical processor n only\n"
           "  --repeat <k>  run the round trip k times (1 to 100) and report the\n"
@@ -149,8 +162,9 @@ std::string csv_quote(std::string_view field) {
 // by another version of the benchmark, and rows are never appended to it.
 constexpr std::string_view kCsvHeader =
     "timestamp_utc,commit,codec,file,original_bytes,compressed_bytes,archive_crc32,"
-    "bits_per_byte,compress_ns_per_byte,decompress_ns_per_byte,repeat,peak_mem_mib,"
-    "large_page_mib";
+    "bits_per_byte,messages,bytes_per_message,compress_ns_per_byte,decompress_ns_per_byte,"
+    "compress_mb_per_s,decompress_mb_per_s,repeat,peak_mem_mib,compress_peak_mem_mib,"
+    "large_page_mib,evictions";
 
 // True if rows can be appended to `path`: it is missing, empty, or starts
 // with kCsvHeader. Otherwise says why not.
@@ -181,33 +195,84 @@ double mebibytes(std::uint64_t bytes) {
     return static_cast<double>(bytes) / (1024.0 * 1024.0);
 }
 
-double per_byte(Clock::duration elapsed, std::size_t bytes) {
+double per_byte(Clock::duration elapsed, std::uint64_t bytes) {
     if (bytes == 0) return 0.0;
     const double ns = std::chrono::duration<double, std::nano>(elapsed).count();
     return ns / static_cast<double>(bytes);
 }
 
-// The archive's size and CRC-32, and the fastest compression and
-// decompression of `repeat`.
+// `value` with `digits` digits after the point.
+std::string fixed(double value, int digits) {
+    std::ostringstream text;
+    text << std::fixed << std::setprecision(digits) << value;
+    return text.str();
+}
+
+double megabytes_per_second(double ns_per_byte) {
+    return ns_per_byte == 0.0 ? 0.0 : 1000.0 / ns_per_byte;
+}
+
+// What is known of an input before it is measured: its size and CRC-32,
+// and how many ITCH messages it is, if it is those and nothing else.
+struct Input {
+    std::uint64_t size = 0;
+    std::uint32_t crc32 = 0;
+    std::optional<std::uint64_t> messages;
+};
+
+// One pass over the file, a block at a time.
+Input inspect(const fs::path& path) {
+    cpress::bench::MessageFile file(path);
+    std::uint64_t messages = 0;
+    while (!file.next().empty()) ++messages;
+
+    Input input;
+    if (file.at_end() && messages > 0) input.messages = messages;
+    file.read_rest();
+    input.size = file.bytes_read();
+    input.crc32 = file.crc32();
+    return input;
+}
+
+// The archive's size and CRC-32, the fastest compression and decompression
+// of `repeat`, and the process's peak memory after the first compression,
+// before anything was decompressed.
 struct Measurement {
-    std::size_t archive_size = 0;
+    std::uint64_t archive_size = 0;
     std::uint32_t archive_crc32 = 0;
     Clock::duration compress = Clock::duration::max();
     Clock::duration decompress = Clock::duration::max();
+    std::uint64_t compress_peak_bytes = 0;
 };
 
-// Compresses and decompresses `input` `repeat` times, keeping the fastest
-// time of each. Every round trip must restore the input and every archive
-// must have the first one's size and CRC-32; otherwise returns nothing,
-// having said which. Each run's archive is freed before the next, so the
-// peak memory of a row does not depend on `repeat`.
-std::optional<Measurement> measure(const cpress::Bytes& input, const cpress::Codec& codec,
-                                   int repeat) {
+// Records the archive of the first run, and checks that a later run made
+// the same one; says so if it did not.
+bool same_archive_as_first(Measurement& result, int run, const cpress::Bytes& archive) {
+    const std::uint32_t crc = cpress::crc32(archive);
+    if (run == 0) {
+        result.archive_size = archive.size();
+        result.archive_crc32 = crc;
+        return true;
+    }
+    if (archive.size() == result.archive_size && crc == result.archive_crc32) return true;
+    std::cerr << "cpress-bench: run " << run + 1 << " made a different archive\n";
+    return false;
+}
+
+// Compresses and decompresses the file at `path` `repeat` times in memory,
+// keeping the fastest time of each. Every round trip must restore the input
+// and every archive must have the first one's size and CRC-32; otherwise
+// returns nothing, having said which. Each run's archive is freed before
+// the next, so the peak memory of a row does not depend on `repeat`.
+std::optional<Measurement> measure_in_memory(const fs::path& path, const cpress::Codec& codec,
+                                             int repeat) {
+    const cpress::Bytes input = cpress::read_file(path);
     Measurement result;
     for (int run = 0; run < repeat; ++run) {
         const auto t0 = Clock::now();
         const cpress::Bytes archive = cpress::compress(input, codec);
         const auto t1 = Clock::now();
+        if (run == 0) result.compress_peak_bytes = platform::peak_memory_bytes();
         const cpress::Bytes restored = cpress::decompress(archive);
         const auto t2 = Clock::now();
 
@@ -215,16 +280,89 @@ std::optional<Measurement> measure(const cpress::Bytes& input, const cpress::Cod
             std::cerr << "cpress-bench: ROUND TRIP MISMATCH\n";
             return {};
         }
-        const std::uint32_t crc = cpress::crc32(archive);
-        if (run == 0) {
-            result.archive_size = archive.size();
-            result.archive_crc32 = crc;
-        } else if (archive.size() != result.archive_size || crc != result.archive_crc32) {
-            std::cerr << "cpress-bench: run " << run + 1 << " made a different archive\n";
-            return {};
-        }
+        if (!same_archive_as_first(result, run, archive)) return {};
         result.compress = std::min(result.compress, t1 - t0);
         result.decompress = std::min(result.decompress, t2 - t1);
+    }
+    return result;
+}
+
+// A sink that keeps nothing: the size and the CRC-32 of what it was given.
+class DiscardingSink final : public cpress::ByteSink {
+public:
+    void write(cpress::ByteView bytes) override {
+        size_ += bytes.size();
+        crc32_ = cpress::crc32(bytes, crc32_);
+    }
+
+    [[nodiscard]] std::uint64_t size() const noexcept {
+        return size_;
+    }
+    [[nodiscard]] std::uint32_t crc32() const noexcept {
+        return crc32_;
+    }
+
+private:
+    std::uint64_t size_ = 0;
+    std::uint32_t crc32_ = 0;
+};
+
+// A name in the temporary directory for a file of this process's own,
+// which is removed with this object.
+class TemporaryFile {
+public:
+    TemporaryFile()
+        : path_(fs::temp_directory_path() /
+                ("cpress-bench-" + std::to_string(std::random_device{}()) + ".cpz")) {}
+    // Owns a file on disk: not copied, and removing it is the destructor's
+    // job.
+    TemporaryFile(const TemporaryFile&) = delete;
+    TemporaryFile& operator=(const TemporaryFile&) = delete;
+    TemporaryFile(TemporaryFile&&) = delete;
+    TemporaryFile& operator=(TemporaryFile&&) = delete;
+    ~TemporaryFile() {
+        std::error_code ignored;
+        fs::remove(path_, ignored);
+    }
+
+    [[nodiscard]] const fs::path& path() const noexcept {
+        return path_;
+    }
+
+private:
+    fs::path path_;
+};
+
+// The same for a codec that streams, so that a file larger than memory can
+// be measured: the input is never held, and nor is a restored copy. The
+// compression is file to file, and its time includes reading the input and
+// writing the archive to the temporary directory. The decompression is of
+// the archive in memory, as decompress_file() holds it, into a sink that
+// keeps nothing. The round trip is checked by the size and the CRC-32 of
+// what came out, against those of `input`.
+std::optional<Measurement> measure_streamed(const fs::path& path, const Input& input,
+                                            const cpress::Codec& codec, int repeat) {
+    const TemporaryFile archive_file;
+    Measurement result;
+    for (int run = 0; run < repeat; ++run) {
+        const auto t0 = Clock::now();
+        cpress::compress_file(path, archive_file.path(), codec);
+        const auto t1 = Clock::now();
+        if (run == 0) result.compress_peak_bytes = platform::peak_memory_bytes();
+
+        const cpress::Bytes archive = cpress::read_file(archive_file.path());
+        DiscardingSink restored;
+        const auto t2 = Clock::now();
+        cpress::decompress(archive, restored);
+        const auto t3 = Clock::now();
+
+        if (restored.size() != input.size || restored.crc32() != input.crc32) {
+            std::cerr << "cpress-bench: ROUND TRIP MISMATCH\n";
+            return {};
+        }
+        if (!same_archive_as_first(result, run, archive)) return {};
+        result.compress = std::min(result.compress, t1 - t0);
+        result.decompress = std::min(result.decompress, t3 - t2);
     }
     return result;
 }
@@ -234,8 +372,10 @@ constexpr int kNameWidth = 28;
 void print_table_header() {
     std::cout << std::left << std::setw(kNameWidth) << "file" << std::right << std::setw(14)
               << "original" << std::setw(14) << "compressed" << std::setw(10) << "crc32"
-              << std::setw(10) << "bits/B" << std::setw(12) << "comp ns/B" << std::setw(12)
-              << "dec ns/B" << std::setw(11) << "peak MiB" << std::setw(11) << "large MiB"
+              << std::setw(10) << "bits/B" << std::setw(9) << "B/msg" << std::setw(11)
+              << "comp ns/B" << std::setw(10) << "dec ns/B" << std::setw(11) << "comp MB/s"
+              << std::setw(10) << "dec MB/s" << std::setw(10) << "peak MiB" << std::setw(11)
+              << "large MiB"
               << "\n";
 }
 
@@ -262,37 +402,62 @@ int run_one(const Options& options) {
     }
 
     const fs::path path = options.one;
-    const cpress::Bytes input = cpress::read_file(path);
+    const Input input = inspect(path);
     const std::uint64_t large_pages_before = large_page_bytes_so_far();
-    const std::optional<Measurement> measured = measure(input, *codec, options.repeat);
+    const std::optional<Measurement> measured =
+        codec->encode_stream != nullptr ? measure_streamed(path, input, *codec, options.repeat)
+                                        : measure_in_memory(path, *codec, options.repeat);
     if (!measured) {
         std::cerr << "cpress-bench: '" << path.string() << "' failed verification\n";
         return 1;
     }
-    const std::size_t archive_size = measured->archive_size;
+    const std::uint64_t archive_size = measured->archive_size;
+    const auto runs = static_cast<std::uint64_t>(options.repeat);
 
     const std::string crc = hex32(measured->archive_crc32);
     const double bits_per_byte =
-        input.empty() ? 0.0
-                      : 8.0 * static_cast<double>(archive_size) / static_cast<double>(input.size());
-    const double compress_ns = per_byte(measured->compress, input.size());
-    const double decompress_ns = per_byte(measured->decompress, input.size());
+        input.size == 0 ? 0.0
+                        : 8.0 * static_cast<double>(archive_size) / static_cast<double>(input.size);
+    // Both are left empty for a file that is not ITCH messages from end to
+    // end.
+    std::string messages;
+    std::string bytes_per_message;
+    std::string bytes_per_message_shown = "-";
+    if (input.messages) {
+        const double ratio =
+            static_cast<double>(archive_size) / static_cast<double>(*input.messages);
+        messages = std::to_string(*input.messages);
+        bytes_per_message = fixed(ratio, 4);
+        bytes_per_message_shown = fixed(ratio, 3);
+    }
+    const double compress_ns = per_byte(measured->compress, input.size);
+    const double decompress_ns = per_byte(measured->decompress, input.size);
+    const double compress_mb = megabytes_per_second(compress_ns);
+    const double decompress_mb = megabytes_per_second(decompress_ns);
     // Each round trip builds a model to compress and then one to decompress,
     // never two at once, so the peak held one model's large pages.
-    const std::uint64_t models = 2 * static_cast<std::uint64_t>(options.repeat);
     const std::uint64_t large_page_bytes =
-        (large_page_bytes_so_far() - large_pages_before) / models;
+        (large_page_bytes_so_far() - large_pages_before) / (2 * runs);
     std::uint64_t peak_bytes = platform::peak_memory_bytes();
-    if (platform::peak_memory_omits_large_pages()) peak_bytes += large_page_bytes;
+    std::uint64_t compress_peak_bytes = measured->compress_peak_bytes;
+    if (platform::peak_memory_omits_large_pages()) {
+        peak_bytes += large_page_bytes;
+        compress_peak_bytes += large_page_bytes;
+    }
     const double peak_mib = mebibytes(peak_bytes);
+    const double compress_peak_mib = mebibytes(compress_peak_bytes);
     const double large_page_mib = mebibytes(large_page_bytes);
+    // Every compression evicts the same orders; this is one compression's.
+    const std::uint64_t evictions = cpress::itch::evictions_recorded() / runs;
 
     std::cout << std::left << std::setw(kNameWidth) << path.filename().string() << std::right
-              << std::setw(14) << input.size() << std::setw(14) << archive_size << std::setw(10)
+              << std::setw(14) << input.size << std::setw(14) << archive_size << std::setw(10)
               << crc << std::fixed << std::setprecision(3) << std::setw(10) << bits_per_byte
-              << std::setprecision(1) << std::setw(12) << compress_ns << std::setw(12)
-              << decompress_ns << std::setw(11) << peak_mib << std::setw(11) << large_page_mib
-              << "\n";
+              << std::setw(9) << bytes_per_message_shown << std::setprecision(1) << std::setw(11)
+              << compress_ns << std::setw(10) << decompress_ns << std::setprecision(2)
+              << std::setw(11) << compress_mb << std::setw(10) << decompress_mb
+              << std::setprecision(1) << std::setw(10) << peak_mib << std::setw(11)
+              << large_page_mib << "\n";
 
     std::error_code ec;
     const bool needs_header = !fs::exists(options.csv, ec) || fs::file_size(options.csv, ec) == 0;
@@ -303,10 +468,12 @@ int run_one(const Options& options) {
     }
     if (needs_header) csv << kCsvHeader << "\n";
     csv << utc_timestamp() << ',' << options.commit << ',' << codec->name << ','
-        << csv_quote(path.generic_string()) << ',' << input.size() << ',' << archive_size << ','
-        << crc << ',' << std::fixed << std::setprecision(4) << bits_per_byte << ','
-        << std::setprecision(2) << compress_ns << ',' << decompress_ns << ',' << options.repeat
-        << ',' << peak_mib << ',' << large_page_mib << "\n";
+        << csv_quote(path.generic_string()) << ',' << input.size << ',' << archive_size << ','
+        << crc << ',' << std::fixed << std::setprecision(4) << bits_per_byte << ',' << messages
+        << ',' << bytes_per_message << ',' << std::setprecision(2) << compress_ns << ','
+        << decompress_ns << ',' << std::setprecision(3) << compress_mb << ',' << decompress_mb
+        << ',' << std::setprecision(2) << options.repeat << ',' << peak_mib << ','
+        << compress_peak_mib << ',' << large_page_mib << ',' << evictions << "\n";
     return 0;
 }
 
