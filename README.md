@@ -42,7 +42,12 @@ cpress info notes.txt.cpz     # header: codec, sizes, checksum
 cpress codecs
 ```
 
-`cpress` never overwrites an existing file unless you pass `-f`.
+`cpress` never replaces an existing file unless you pass `-f`. The output is
+written under a temporary name and renamed into place once it is complete,
+so a failed run leaves no partial file and any old one as it was. `-f`
+replaces the file rather than writing into it: a symbolic link at the
+output's name becomes a regular file, and the new file has default
+permissions.
 
 `mix9` sizes its model to the input: about 4.3 MiB for a file of a kilobyte,
 980 MiB for anything over 4 MiB. (`mix6` needs 190 KiB to 640 MiB.)

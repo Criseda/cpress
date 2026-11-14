@@ -255,6 +255,33 @@ void test_bad_archive_leaves_nothing() {
     CHECK(cpress::read_file(kept) == (cpress::Bytes{1, 2, 3}));
 }
 
+// Files that already have the temporary names are left as they were, and
+// nothing else is left behind. Beside the archive, a file has the first name
+// and a directory with a file in it the second; beside the output, a file
+// has the first.
+void test_taken_temporary_names_are_untouched() {
+    const ScratchDirectory scratch;
+    const cpress::Bytes data = sample_text(2'000);
+    const cpress::Bytes theirs{7, 7, 7};
+    const fs::path taken_directory = scratch.file("input.cpz.cpress-tmp1");
+    cpress::write_file(scratch.file("input"), data);
+    cpress::write_file(scratch.file("input.cpz.cpress-tmp"), theirs);
+    fs::create_directory(taken_directory);
+    cpress::write_file(taken_directory / "partial", theirs);
+    cpress::write_file(scratch.file("output.cpress-tmp"), theirs);
+
+    cpress::compress_file(scratch.file("input"), scratch.file("input.cpz"));
+    cpress::decompress_file(scratch.file("input.cpz"), scratch.file("output"));
+
+    CHECK(cpress::read_file(scratch.file("output")) == data);
+    CHECK(cpress::read_file(scratch.file("input.cpz.cpress-tmp")) == theirs);
+    CHECK(cpress::read_file(taken_directory / "partial") == theirs);
+    CHECK(cpress::read_file(scratch.file("output.cpress-tmp")) == theirs);
+    CHECK(scratch.names() ==
+          (std::vector<std::string>{"input", "input.cpz", "input.cpz.cpress-tmp",
+                                    "input.cpz.cpress-tmp1", "output", "output.cpress-tmp"}));
+}
+
 // The checksum of data that arrives in pieces is the checksum of the whole.
 void test_crc32_in_pieces() {
     const cpress::Bytes data = random_bytes(10'000, 0xC2C);
@@ -278,6 +305,7 @@ void run_stream_tests() {
         test_block_edges_change_nothing();
         test_more_than_a_block_through_files();
         test_bad_archive_leaves_nothing();
+        test_taken_temporary_names_are_untouched();
     } catch (const std::exception& e) {
         ++g_failures;
         std::cerr << "stream tests threw: " << e.what() << "\n";

@@ -38,7 +38,7 @@ void print_usage(std::ostream& os) {
           "  --codec <name>   codec to compress with (default: "
        << cpress::default_codec().name
        << ")\n"
-          "  -f, --force      overwrite the output file if it exists\n"
+          "  -f, --force      replace the output file if it exists\n"
           "  -h, --help       show this help\n"
           "  --version        show the version\n";
 }
@@ -89,7 +89,7 @@ void check_output(const fs::path& input, const fs::path& output, bool force) {
             throw cpress::Error("input and output are the same file");
         }
         if (!force) {
-            throw cpress::Error("'" + output.string() + "' already exists (use -f to overwrite)");
+            throw cpress::Error("'" + output.string() + "' already exists (use -f to replace it)");
         }
     }
 }

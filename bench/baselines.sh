@@ -103,13 +103,14 @@ size_of() {
 }
 
 # Runs a command and leaves the seconds it took, by the wall clock, in
-# $elapsed.
+# $elapsed. Bash's own `time` gives milliseconds everywhere, where `date`
+# gives only whole seconds on macOS. Its report goes to the group's
+# standard error, so the command's own is passed round it on descriptor 3.
 timed() {
-    local start end
-    start=$(date +%s.%N)
-    "$@"
-    end=$(date +%s.%N)
-    elapsed=$(awk -v a="$start" -v b="$end" 'BEGIN { printf "%.3f", b - a }')
+    local TIMEFORMAT=%3R
+    { time "$@" 2>&3; } 3>&2 2> "$scratch/seconds"
+    elapsed=$(< "$scratch/seconds")
+    rm -f "$scratch/seconds"
 }
 to_file() {
     local out=$1
@@ -170,20 +171,23 @@ row "cpress mix9, first $head_messages" "$(size_of "$scratch/head.cpz")" "$mix9_
 rm -f "$scratch/head" "$scratch/head.cpz" "$scratch/head.out"
 
 # The fair baseline. One line for each column: its name, its size under
-# zstd -19, and the processor seconds zstd spent, user and system. The
-# splitter's own time is not the baseline's: a real tool would split once.
+# zstd -19, and the processor seconds zstd spent, user and system. Only
+# zstd is timed: the splitter's time is not the baseline's, as a real tool
+# would split once, and wc's is not either. The times go to a file of their
+# own, and the commands' standard error to the script's, so that nothing
+# they print is read as a size or a time.
 TIMEFORMAT='%3U %3S'
 : > "$scratch/columns.txt"
 for column in $("$columns" --list "$file"); do
-    if ! measured=$({ "$columns" --column "$column" "$file" |
-        { time zstd -19 -T1 -c | wc -c; }; } 2>&1); then
-        echo "baselines.sh: column $column failed: $measured" >&2
+    if ! size=$("$columns" --column "$column" "$file" |
+        { time zstd -19 -T1 -c 2>&3; } 3>&2 2> "$scratch/seconds" | wc -c); then
+        echo "baselines.sh: column $column failed" >&2
         exit 1
     fi
-    # wc's count and the two times are on lines of their own: join them.
-    echo "$column" $measured |
+    echo "$column" "$size" "$(< "$scratch/seconds")" |
         awk '{ printf "%s %d %.3f\n", $1, $2, $3 + $4 }' >> "$scratch/columns.txt"
 done
+rm -f "$scratch/seconds"
 
 # The smallest encoding of each column; then each of the fields that every
 # type starts with once, as its columns by type or as its one column across

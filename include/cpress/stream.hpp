@@ -53,8 +53,13 @@ public:
 // existing file. The input is read once, a block at a time, if the codec
 // can stream, and whole otherwise. Throws Error on failure, and then leaves
 // no temporary file and any file that was at `output` as it was: the
-// archive is written under a temporary name beside `output` and renamed
-// once it is complete.
+// archive is written as a temporary file, in a new directory beside
+// `output`, and renamed once it is complete.
+//
+// The rename replaces the file at `output`; it does not write into it. A
+// symbolic link there becomes a regular file and its target is unchanged,
+// other hard links to the old file keep the old contents, and the new file
+// has the permissions of any new file.
 void compress_file(const std::filesystem::path& input, const std::filesystem::path& output,
                    const Codec& codec = default_codec());
 
@@ -62,8 +67,10 @@ void compress_file(const std::filesystem::path& input, const std::filesystem::pa
 // existing file. The archive is held in memory; the output is written a
 // block at a time if the codec can stream. Throws Error if the archive is
 // malformed or the decoded data fails the size or checksum check, and then
-// leaves no output file and no temporary file: the data is written under a
-// temporary name beside `output` and renamed only once it has been checked.
+// leaves no output file and no temporary file: the data is written as a
+// temporary file, in a new directory beside `output`, and renamed only once
+// it has been checked. It replaces the file at `output` as compress_file()
+// does.
 void decompress_file(const std::filesystem::path& archive, const std::filesystem::path& output);
 
 // Writes the original data of `archive` to `output`. Throws Error as
