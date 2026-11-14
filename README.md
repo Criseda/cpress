@@ -128,9 +128,11 @@ twice; the faster of the two is shown. i9-12900K. Linux: Ubuntu 24.04 under
 WSL 2, GCC 13.3, transparent huge pages on `madvise`. Windows: Windows 11,
 MSVC 19.51, with the "Lock pages in memory" privilege. Both put 980 MiB of
 the model on large pages. `3aa6395` has v0.3's model and coder with stage
-4's benchmark; `9d35533` is stage 4. Both are on the `stage-4` branch,
-measured before the stage was merged; `v0.4` is that branch's last commit,
-file for file.
+4's benchmark; `9d35533` is stage 4. Both are commits of pull request #6,
+measured before the stage was merged. Its branch is gone, but GitHub keeps
+the pull request's commits: `git fetch origin pull/6/head` gets them, and
+the commits cited below. `v0.4` is the pull request's last commit, file
+for file.
 
 | Build | Commit | Compress ns/B | Decompress ns/B | Change |
 |---|---|---|---|---|
