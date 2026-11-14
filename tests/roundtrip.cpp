@@ -1,10 +1,15 @@
 // Container-level tests: checksum vectors, round trips for every codec, and
 // rejection of corrupted archives.
 #include "check.hpp"
+#include "itch_sample.hpp"
 
 #include "codec/bitwise.hpp"
+#include "codec/buffer_stream.hpp"
+#include "codec/messages.hpp"
 #include "cpress/cpress.hpp"
 #include "cpress/io.hpp"
+#include "itch/message_model.hpp"
+#include "itch/schema.hpp"
 #include "model/mix6.hpp"
 #include "model/mix9.hpp"
 #include "model/order0.hpp"
@@ -12,8 +17,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <random>
@@ -52,6 +59,11 @@ std::vector<Sample> samples() {
         text += "the quick brown fox jumps over the lazy dog. ";
     }
     out.push_back({"repetitive text", bytes_of(text)});
+
+    // Not text: market data, which codec 4 parses and the others see as
+    // bytes. The six samples above are the other way round: none is ITCH,
+    // so codec 4 takes them through its escape.
+    out.push_back({"itch messages", itch_sample({.messages = 20'000, .seed = 0x17C4})});
     return out;
 }
 
@@ -134,59 +146,52 @@ void test_corruption() {
     }
 }
 
-// The untrusted-input rules of decode_bitwise, exercised directly rather
-// than through the container.
-void test_decode_bitwise_limits() {
-    using Decode = void (*)(cpress::ByteView, std::uint64_t, cpress::Bytes&);
-    const Decode decode = &codec::decode_bitwise<model::Order0>;
+// A driver's decoder, as the limit tests call it: appends the `size` bytes
+// that `payload` stands for to `output`, or throws cpress::Error.
+using DecodePayload =
+    std::function<void(cpress::ByteView payload, std::uint64_t size, cpress::Bytes& output)>;
+
+// The untrusted-input rules that every driver's decoder keeps, whatever it
+// decodes. `max_expansion` is the driver's limit on output bytes per payload
+// byte, and `payload` is what its encoder wrote for `data`.
+void check_decode_limits(const DecodePayload& decode, std::uint64_t max_expansion,
+                         const cpress::Bytes& data, const cpress::Bytes& payload) {
     // The text of the Error `decode` throws, or "" if it does not throw.
-    auto error_of = [&](const cpress::Bytes& payload, std::uint64_t size) -> std::string {
+    auto error_of = [&](const cpress::Bytes& bytes, std::uint64_t size) -> std::string {
         try {
             cpress::Bytes out;
-            decode(payload, size, out);
+            decode(bytes, size, out);
         } catch (const cpress::Error& e) {
             return e.what();
         }
         return {};
     };
-    auto rejects = [&](const cpress::Bytes& payload, std::uint64_t size) {
-        return !error_of(payload, size).empty();
+    auto rejects = [&](const cpress::Bytes& bytes, std::uint64_t size) {
+        return !error_of(bytes, size).empty();
     };
-    auto over_limit = [&](const cpress::Bytes& payload, std::uint64_t size) {
-        return error_of(payload, size).find("more data") != std::string::npos;
+    auto over_limit = [&](const cpress::Bytes& bytes, std::uint64_t size) {
+        return error_of(bytes, size).find("more data") != std::string::npos;
     };
 
-    // Bounded expansion: four payload bytes may stand for at most 16,384
-    // bytes, and a huge claim is rejected before anything is allocated.
-    // (Within the limit a bogus payload is still rejected, by the overrun
-    // check, once the decoder runs out of bytes.)
+    // Bounded expansion: four payload bytes may stand for at most four
+    // times the limit, and a huge claim is rejected before anything is
+    // allocated. (Within the limit a bogus payload is still rejected, by
+    // another rule, once the decoder is given it.)
     const cpress::Bytes four_zeros(4, 0);
-    constexpr std::uint64_t kLimit = std::uint64_t{4} * codec::kMaxExpansion;
+    const std::uint64_t limit = std::uint64_t{4} * max_expansion;
     CHECK(!rejects(four_zeros, 0));
-    CHECK(!over_limit(four_zeros, kLimit));
-    CHECK(over_limit(four_zeros, kLimit + 1));
+    CHECK(!over_limit(four_zeros, limit));
+    CHECK(over_limit(four_zeros, limit + 1));
     CHECK(over_limit(four_zeros, std::numeric_limits<std::uint64_t>::max()));
 
-    // The limit holds for what is left at every byte, not only on entry. A
-    // random payload claiming the most the limit allows passes the entry
-    // check, then spends its bytes far faster than the claim requires and is
-    // rejected within the first few bytes of output.
+    // The limit holds for what is left all the way through, not only on
+    // entry. A random payload claiming the most the limit allows passes the
+    // entry check, then spends its bytes far faster than the claim requires
+    // and is rejected with next to nothing decoded.
     const cpress::Bytes garbage = random_bytes(std::size_t{64} * 1024, 0xB16);
     cpress::Bytes output;
-    CHECK(throws_error([&] { decode(garbage, garbage.size() * codec::kMaxExpansion, output); }));
-    CHECK(output.size() < codec::kMaxExpansion);
-
-    // Memory follows the payload and the bytes actually decoded, not the
-    // claim. This claim is too modest to be caught early, so the decoder runs
-    // until the payload ends. What was allocated by then is the capped
-    // reserve, or one step of vector growth past the bytes decoded.
-    constexpr std::uint64_t kModestExpansion = 64;
-    static_assert(kModestExpansion > codec::kReserveExpansion);
-    output = {};
-    CHECK(throws_error([&] { decode(garbage, garbage.size() * kModestExpansion, output); }));
-    CHECK(output.size() < garbage.size() * kModestExpansion);
-    CHECK(output.capacity() <=
-          std::max<std::uint64_t>(garbage.size() * codec::kReserveExpansion, output.size() * 2));
+    CHECK(throws_error([&] { decode(garbage, garbage.size() * max_expansion, output); }));
+    CHECK(output.size() < max_expansion);
 
     // No overrun, even when there is nothing to decode.
     CHECK(rejects({}, 0));
@@ -194,11 +199,8 @@ void test_decode_bitwise_limits() {
     CHECK(rejects(four_zeros, 100));  // runs out of payload
 
     // Exact consumption: a byte too many or too few is noticed.
-    const cpress::Bytes data = random_bytes(1000, 0xD474);
-    cpress::Bytes payload;
-    codec::encode_bitwise<model::Order0>(data, payload);
     cpress::Bytes decoded;
-    decode(payload, data.size(), decoded);
+    CHECK(!throws_error([&] { decode(payload, data.size(), decoded); }));
     CHECK(decoded == data);
 
     cpress::Bytes extended = payload;
@@ -207,6 +209,58 @@ void test_decode_bitwise_limits() {
     cpress::Bytes truncated = payload;
     truncated.pop_back();
     CHECK(rejects(truncated, data.size()));
+}
+
+// The rules of decode_bitwise, exercised directly rather than through the
+// container.
+void test_decode_bitwise_limits() {
+    const DecodePayload decode = [](cpress::ByteView payload, std::uint64_t size,
+                                    cpress::Bytes& output) {
+        codec::decode_bitwise<model::Order0>(payload, size, output);
+    };
+    const cpress::Bytes data = random_bytes(1000, 0xD474);
+    cpress::Bytes payload;
+    codec::encode_bitwise<model::Order0>(data, payload);
+    check_decode_limits(decode, codec::kMaxExpansion, data, payload);
+
+    // Memory follows the payload and the bytes actually decoded, not the
+    // claim. This claim is too modest to be caught early, so the decoder runs
+    // until the payload ends. What was allocated by then is the capped
+    // reserve, or one step of vector growth past the bytes decoded.
+    constexpr std::uint64_t kModestExpansion = 64;
+    static_assert(kModestExpansion > codec::kReserveExpansion);
+    const cpress::Bytes garbage = random_bytes(std::size_t{64} * 1024, 0xB16);
+    cpress::Bytes output;
+    CHECK(throws_error([&] { decode(garbage, garbage.size() * kModestExpansion, output); }));
+    CHECK(output.size() < garbage.size() * kModestExpansion);
+    CHECK(output.capacity() <=
+          std::max<std::uint64_t>(garbage.size() * codec::kReserveExpansion, output.size() * 2));
+}
+
+// What codec 4 writes after its level byte for `data`, with the model at
+// `level`. The encoder's model is gone before this returns.
+cpress::Bytes message_payload(const cpress::Bytes& data, int level) {
+    cpress::Bytes payload;
+    itch::MessageModel model(level);
+    codec::SpanSource source(data);
+    codec::VectorSink sink(payload);
+    CHECK(codec::encode_messages(model, source, sink) == data.size());
+    return payload;
+}
+
+// The same rules for decode_messages, whose limit is higher: a message can
+// cost fewer bits than it has bytes.
+void test_decode_messages_limits() {
+    constexpr int kLevel = itch::MessageModel::kMinLevel;
+    static_assert(codec::kMaxMessageExpansion > codec::kMaxExpansion);
+    const DecodePayload decode = [](cpress::ByteView payload, std::uint64_t size,
+                                    cpress::Bytes& output) {
+        itch::MessageModel model(kLevel);
+        codec::VectorSink sink(output);
+        codec::decode_messages(model, payload, size, sink);
+    };
+    const cpress::Bytes data = itch_sample({.messages = 200, .seed = 0x11D});
+    check_decode_limits(decode, codec::kMaxMessageExpansion, data, message_payload(data, kLevel));
 }
 
 // The most confident model the coder allows: every bit is a 1, predicted at
@@ -242,28 +296,39 @@ void test_expansion_ceiling() {
     check_extreme_expansion<model::Order0>(0x00, 1000);
 }
 
-// The payload of a codec with a memory level (codecs 2 and 3) for `data`,
-// with the model at `level`: what the codec writes, except that the level is
-// the caller's choice. The encoder's model is gone before this returns, so a
-// decoder that follows does not hold two at once.
+// The payload of a codec with a memory level for `data`, with the model at
+// `level`: what the codec writes, except that the level is the caller's
+// choice. The encoder's model is gone before it returns, so a decoder that
+// follows does not hold two at once.
+using PayloadAtLevel = cpress::Bytes (*)(const cpress::Bytes& data, int level);
+
+// For codecs 2 and 3, which run their model through the bitwise driver.
 template <model::Predictor Model>
-cpress::Bytes levelled_payload(const cpress::Bytes& data, int level) {
+cpress::Bytes bitwise_payload_at(const cpress::Bytes& data, int level) {
     cpress::Bytes payload{static_cast<std::uint8_t>(level)};
     Model predictor(level);
     codec::encode_bitwise(predictor, data, payload);
     return payload;
 }
 
+// For codec 4.
+cpress::Bytes message_payload_at(const cpress::Bytes& data, int level) {
+    cpress::Bytes payload{static_cast<std::uint8_t>(level)};
+    const cpress::Bytes coded = message_payload(data, level);
+    payload.insert(payload.end(), coded.begin(), coded.end());
+    return payload;
+}
+
 // The level byte is untrusted: one outside the model's limits is rejected,
 // as is a payload too short to have one.
-template <model::Predictor Model>
-void test_level_byte(std::string_view codec_name) {
+template <typename Model>
+void test_level_byte(std::string_view codec_name, PayloadAtLevel payload_at) {
     const cpress::Codec* codec = cpress::find_codec(codec_name);
     CHECK(codec != nullptr);
     if (codec == nullptr) return;
 
     const cpress::Bytes data = bytes_of("the level byte comes first");
-    const cpress::Bytes good = levelled_payload<Model>(data, Model::kMinLevel);
+    const cpress::Bytes good = payload_at(data, Model::kMinLevel);
     auto rejects = [&](const cpress::Bytes& payload) {
         cpress::Bytes output;
         return throws_error([&] { codec->decode(payload, data.size(), output); });
@@ -282,15 +347,15 @@ void test_level_byte(std::string_view codec_name) {
 // would have chosen: the same small input decodes at the smallest level and
 // at the largest. The second allocates everything a level byte can ask for,
 // which makes it the test that reaches the decoder's allocation limit.
-template <model::Predictor Model>
-void test_decodes_any_level(std::string_view codec_name) {
+template <typename Model>
+void test_decodes_any_level(std::string_view codec_name, PayloadAtLevel payload_at) {
     const cpress::Codec* codec = cpress::find_codec(codec_name);
     CHECK(codec != nullptr);
     if (codec == nullptr) return;
 
     const cpress::Bytes data = bytes_of("a small input, coded with a model of any size");
     for (const int level : {Model::kMinLevel, Model::kMaxLevel}) {
-        const cpress::Bytes payload = levelled_payload<Model>(data, level);
+        const cpress::Bytes payload = payload_at(data, level);
         CHECK(payload.at(0) == static_cast<std::uint8_t>(level));
         cpress::Bytes decoded;
         CHECK(!throws_error([&] { codec->decode(payload, data.size(), decoded); }));
@@ -298,10 +363,124 @@ void test_decodes_any_level(std::string_view codec_name) {
     }
 }
 
-// 10,000 random mutations of one valid archive per codec. Each must either be
-// rejected with cpress::Error or decode normally; anything else (another
-// exception type, a crash, a hang, a sanitizer report) is a bug. Seeded, so a
-// failure reproduces.
+// The offsets at which the framed messages of `stream` start: the places
+// where something can go in without cutting a message in two.
+std::vector<std::size_t> message_starts(cpress::ByteView stream) {
+    std::vector<std::size_t> starts;
+    std::size_t at = 0;
+    while (const itch::MessageLayout* layout = itch::framed_message_at(stream.subspan(at))) {
+        starts.push_back(at);
+        at += itch::kLengthPrefixBytes + layout->length;
+    }
+    return starts;
+}
+
+// Codec 4 takes any bytes. What is a message it parses; everything else goes
+// through its escape a byte at a time, and the two alternate freely. Each
+// input here leaves the stream of well-formed messages in a different way.
+void test_itch_mixed_input() {
+    const cpress::Codec* codec = cpress::find_codec(std::string_view{"itch"});
+    CHECK(codec != nullptr);
+    if (codec == nullptr) return;
+
+    constexpr std::size_t kMessages = 3'000;
+    const cpress::Bytes messages = itch_sample({.messages = kMessages, .seed = 0x3D});
+    const std::vector<std::size_t> starts = message_starts(messages);
+    CHECK(starts.size() == kMessages);
+    if (starts.size() != kMessages) return;
+    // NOLINTNEXTLINE(bugprone-random-generator-seed): a fixed seed keeps the test reproducible.
+    std::mt19937_64 rng(0x5911CE);
+
+    // Random bytes between messages, a few at a time, at about one message
+    // in fifty.
+    cpress::Bytes spliced;
+    for (std::size_t i = 0; i < kMessages; ++i) {
+        if (rng() % 50 == 0) {
+            for (std::uint64_t n = 1 + (rng() % 16); n > 0; --n) {
+                spliced.push_back(static_cast<std::uint8_t>(rng() >> 56));
+            }
+        }
+        const std::size_t end = i + 1 < kMessages ? starts[i + 1] : messages.size();
+        spliced.insert(spliced.end(), messages.begin() + static_cast<std::ptrdiff_t>(starts[i]),
+                       messages.begin() + static_cast<std::ptrdiff_t>(end));
+    }
+    CHECK(spliced.size() > messages.size());
+
+    cpress::Bytes cut_short = messages;
+    cut_short.resize(messages.size() - 5);
+
+    // A length that is not the length of the type after it: not a message.
+    cpress::Bytes wrong_prefix = messages;
+    wrong_prefix.at(starts[1'000] + 1) += 1;
+
+    // The byte that codec 4 uses for its escape, where a type should be.
+    cpress::Bytes type_zero = messages;
+    type_zero.at(starts[2'000] + itch::kLengthPrefixBytes) = 0;
+
+    // Well-formed messages that make no sense: every type, with every field
+    // random, so that no order is known, no stock repeats and no difference
+    // is small.
+    constexpr std::size_t kSensible = 500;
+    constexpr std::size_t kRounds = 40;
+    cpress::Bytes senseless(messages.begin(),
+                            messages.begin() + static_cast<std::ptrdiff_t>(starts[kSensible]));
+    for (std::size_t round = 0; round < kRounds; ++round) {
+        for (const itch::MessageLayout& layout : itch::kLayouts) {
+            const cpress::Bytes message = random_itch_message(layout.type, rng);
+            senseless.insert(senseless.end(), message.begin(), message.end());
+        }
+    }
+    CHECK(count_itch_messages(senseless) == kSensible + (kRounds * itch::kLayouts.size()));
+
+    round_trip(*codec, "random bytes between messages", spliced);
+    round_trip(*codec, "a message cut short", cut_short);
+    round_trip(*codec, "a prefix that is not the length of its type", wrong_prefix);
+    round_trip(*codec, "a type byte of zero", type_zero);
+    round_trip(*codec, "messages with random fields", senseless);
+}
+
+// `count` random mutations of the archive `codec` makes of `data`. Each
+// must either be rejected with cpress::Error or decode normally; anything
+// else (another exception type, a crash, a hang, a sanitizer report) is a
+// bug. Seeded, so a failure reproduces.
+void check_mutations(const cpress::Codec& codec, const cpress::Bytes& data, int count) {
+    const cpress::Bytes good = cpress::compress(data, codec);
+    std::mt19937_64 rng(0xFACADE + codec.id);
+    int rejected = 0;
+    for (int i = 0; i < count; ++i) {
+        cpress::Bytes archive = good;
+        switch (rng() % 4) {
+            case 0:  // flip one bit anywhere
+                archive.at(rng() % archive.size()) ^= static_cast<std::uint8_t>(1U << (rng() % 8));
+                break;
+            case 1:  // truncate
+                archive.resize(rng() % archive.size());
+                break;
+            case 2:  // append bytes
+                for (std::uint64_t n = 1 + (rng() % 8); n > 0; --n) {
+                    archive.push_back(static_cast<std::uint8_t>(rng() >> 56));
+                }
+                break;
+            default:  // overwrite one header byte
+                archive.at(rng() % cpress::kHeaderSize) = static_cast<std::uint8_t>(rng() >> 56);
+                break;
+        }
+        try {
+            const cpress::Bytes out = cpress::decompress(archive);
+            CHECK(out.size() == cpress::read_header(archive).original_size);
+        } catch (const cpress::Error&) {
+            ++rejected;
+        } catch (const std::exception& e) {
+            CHECK(false && "decompress threw something other than cpress::Error");
+            std::cerr << "codec '" << codec.name << "': " << e.what() << "\n";
+        }
+    }
+    // Almost every mutation damages the archive; if few were rejected the
+    // test is not exercising anything.
+    CHECK(rejected > count / 2);
+}
+
+// 10,000 mutations of one archive for each of the bitwise codecs.
 //
 // The text is short because every mutation costs a decode of it, and a
 // decode through mix6 costs many times one through order0. Through mix9 the
@@ -309,52 +488,32 @@ void test_decodes_any_level(std::string_view codec_name) {
 // length of text changes. The length does not change what the test proves:
 // every kind of mutation still lands on the header and on a payload that
 // takes the decoder through whole bytes.
+//
+// Codec 4 gets fewer, of another input. Its smallest model is 12.3 MiB, so
+// a decode costs several times one of mix9's whatever it decodes: with
+// MSVC its 1,500 take 2.7 seconds, against 4.0 for mix9's 10,000. Its input
+// is messages, with a few bytes that are not, so that a damaged payload
+// takes the decoder through the fields of a message, the order table and
+// the escape. A hundred messages make an archive of 608 bytes, so every
+// byte of it is still hit more than once.
 void test_mutations() {
     constexpr int kMutations = 10'000;
+    constexpr int kMessageMutations = 1'500;
     constexpr int kSentences = 5;
     std::string text;
     for (int i = 0; i < kSentences; ++i) {
         text += "mutation testing: the quick brown fox " + std::to_string(i * i) + ". ";
     }
-    const cpress::Bytes data = bytes_of(text);
+
+    cpress::Bytes messages = itch_sample({.messages = 100, .seed = 0xFACADE});
+    messages.insert(messages.end(), {0x00, 0x24, 0x41});
 
     for (const cpress::Codec& codec : cpress::codecs()) {
-        const cpress::Bytes good = cpress::compress(data, codec);
-        std::mt19937_64 rng(0xFACADE + codec.id);
-        int rejected = 0;
-        for (int i = 0; i < kMutations; ++i) {
-            cpress::Bytes archive = good;
-            switch (rng() % 4) {
-                case 0:  // flip one bit anywhere
-                    archive.at(rng() % archive.size()) ^=
-                        static_cast<std::uint8_t>(1U << (rng() % 8));
-                    break;
-                case 1:  // truncate
-                    archive.resize(rng() % archive.size());
-                    break;
-                case 2:  // append bytes
-                    for (std::uint64_t n = 1 + (rng() % 8); n > 0; --n) {
-                        archive.push_back(static_cast<std::uint8_t>(rng() >> 56));
-                    }
-                    break;
-                default:  // overwrite one header byte
-                    archive.at(rng() % cpress::kHeaderSize) =
-                        static_cast<std::uint8_t>(rng() >> 56);
-                    break;
-            }
-            try {
-                const cpress::Bytes out = cpress::decompress(archive);
-                CHECK(out.size() == cpress::read_header(archive).original_size);
-            } catch (const cpress::Error&) {
-                ++rejected;
-            } catch (const std::exception& e) {
-                CHECK(false && "decompress threw something other than cpress::Error");
-                std::cerr << "codec '" << codec.name << "': " << e.what() << "\n";
-            }
+        if (codec.encode_stream == nullptr) {
+            check_mutations(codec, bytes_of(text), kMutations);
+        } else {
+            check_mutations(codec, messages, kMessageMutations);
         }
-        // Almost every mutation damages the archive; if few were rejected the
-        // test is not exercising anything.
-        CHECK(rejected > kMutations / 2);
     }
 }
 
@@ -367,7 +526,7 @@ struct ArchiveChecksum {
     std::uint32_t crc32;
 };
 
-using ArchiveChecksums = std::array<ArchiveChecksum, 6>;
+using ArchiveChecksums = std::array<ArchiveChecksum, 7>;
 
 constexpr ArchiveChecksums kOrder0Checksums{{
     {"empty", 0xe2ccc027},
@@ -376,6 +535,7 @@ constexpr ArchiveChecksums kOrder0Checksums{{
     {"random 1 MiB", 0xea105de5},
     {"every byte value", 0x7455b768},
     {"repetitive text", 0xe13ff503},
+    {"itch messages", 0x5d52c615},
 }};
 
 constexpr ArchiveChecksums kMix6Checksums{{
@@ -385,6 +545,7 @@ constexpr ArchiveChecksums kMix6Checksums{{
     {"random 1 MiB", 0x0ef3d68f},
     {"every byte value", 0xe3c6c63a},
     {"repetitive text", 0x09956ca7},
+    {"itch messages", 0x6c282edd},
 }};
 
 constexpr ArchiveChecksums kMix9Checksums{{
@@ -394,6 +555,18 @@ constexpr ArchiveChecksums kMix9Checksums{{
     {"random 1 MiB", 0x92dff496},
     {"every byte value", 0x8f56f7c7},
     {"repetitive text", 0xe3662933},
+    {"itch messages", 0xda7541e1},
+}};
+
+// Codec 4 is experimental until v0.5: until then these may change with it.
+constexpr ArchiveChecksums kItchChecksums{{
+    {"empty", 0x16d05e98},
+    {"one byte", 0x72501d59},
+    {"zeros 64 KiB", 0x0743596d},
+    {"random 1 MiB", 0x2b9af7ca},
+    {"every byte value", 0x891e1357},
+    {"repetitive text", 0x40582d6f},
+    {"itch messages", 0xe250f8f1},
 }};
 
 void check_determinism(std::string_view codec_name, const ArchiveChecksums& checksums,
@@ -422,6 +595,7 @@ void test_determinism(const std::vector<Sample>& inputs) {
     check_determinism("order0", kOrder0Checksums, inputs);
     check_determinism("mix6", kMix6Checksums, inputs);
     check_determinism("mix9", kMix9Checksums, inputs);
+    check_determinism("itch", kItchChecksums, inputs);
 }
 
 // Bytes needed to code `data` with the best possible order-0 model, i.e.
@@ -501,6 +675,29 @@ void test_mix9_compresses(const std::vector<Sample>& inputs) {
     CHECK(random_archive < 1.0025 * static_cast<double>(random.size()));
 }
 
+// itch must compress market data far better than the text model does, which
+// is the reason it exists. The generated messages are harder than a real
+// day, since their prices, sizes and gaps are drawn at random, and the gap
+// is narrower than on a day: the archive is 71,443 bytes against mix9's
+// 156,913, so 46% of it, and the bound is 55%.
+//
+// What is not a message goes through the escape, a byte at a time with the
+// four bytes before it as contexts. That is enough to see the repetition in
+// the text, and random data grows by 0.11%, the type byte that says "not a
+// message" having cost next to nothing.
+void test_itch_compresses(const std::vector<Sample>& inputs) {
+    const cpress::Bytes& messages = sample_named(inputs, "itch messages").data;
+    CHECK(archive_size("itch", messages) < 0.55 * archive_size("mix9", messages));
+
+    const cpress::Bytes& text = sample_named(inputs, "repetitive text").data;
+    CHECK(archive_size("itch", text) < 0.005 * static_cast<double>(text.size()));
+
+    const cpress::Bytes& random = sample_named(inputs, "random 1 MiB").data;
+    const double random_archive = archive_size("itch", random);
+    CHECK(random_archive > static_cast<double>(random.size()));
+    CHECK(random_archive < 1.0025 * static_cast<double>(random.size()));
+}
+
 }  // namespace
 
 void run_roundtrip_tests(std::span<const char* const> files) {
@@ -510,16 +707,21 @@ void run_roundtrip_tests(std::span<const char* const> files) {
     test_round_trips(inputs);
     test_corruption();
     test_decode_bitwise_limits();
+    test_decode_messages_limits();
     test_expansion_ceiling();
-    test_level_byte<model::Mix6>("mix6");
-    test_level_byte<model::Mix9>("mix9");
-    test_decodes_any_level<model::Mix6>("mix6");
-    test_decodes_any_level<model::Mix9>("mix9");
+    test_level_byte<model::Mix6>("mix6", &bitwise_payload_at<model::Mix6>);
+    test_level_byte<model::Mix9>("mix9", &bitwise_payload_at<model::Mix9>);
+    test_level_byte<itch::MessageModel>("itch", &message_payload_at);
+    test_decodes_any_level<model::Mix6>("mix6", &bitwise_payload_at<model::Mix6>);
+    test_decodes_any_level<model::Mix9>("mix9", &bitwise_payload_at<model::Mix9>);
+    test_decodes_any_level<itch::MessageModel>("itch", &message_payload_at);
+    test_itch_mixed_input();
     test_mutations();
     test_determinism(inputs);
     test_order0_compresses(inputs);
     test_mix6_compresses(inputs);
     test_mix9_compresses(inputs);
+    test_itch_compresses(inputs);
 
     try {
         std::vector<Sample> loaded;

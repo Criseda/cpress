@@ -1,12 +1,17 @@
 // cpress command-line tool.
 #include "cpress/cpress.hpp"
-#include "cpress/io.hpp"
+#include "cpress/stream.hpp"
 
+#include <array>
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -89,6 +94,17 @@ void check_output(const fs::path& input, const fs::path& output, bool force) {
     }
 }
 
+// The header of the archive at `path`, read without the rest of the file:
+// an archive can be larger than memory.
+cpress::Header read_header_of(const fs::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) throw cpress::Error("cannot open '" + path.string() + "'");
+    std::array<std::uint8_t, cpress::kHeaderSize> header{};
+    file.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    const auto count = static_cast<std::size_t>(file.gcount());
+    return cpress::read_header(std::span(header).first(count));
+}
+
 void report(const fs::path& from, const fs::path& to, std::uint64_t from_size,
             std::uint64_t to_size, double seconds, std::string_view codec) {
     std::cout << from.string() << " -> " << to.string() << "\n  " << from_size << " -> " << to_size
@@ -115,13 +131,13 @@ int cmd_compress(const Options& options) {
     }
     check_output(input, output, options.force);
 
-    const cpress::Bytes data = cpress::read_file(input);
+    // File to file: a codec that can stream never holds the input. The time
+    // includes reading and writing the files.
     const auto start = Clock::now();
-    const cpress::Bytes archive = cpress::compress(data, *codec);
+    cpress::compress_file(input, output, *codec);
     const double seconds = seconds_since(start);
-    cpress::write_file(output, archive);
 
-    report(input, output, data.size(), archive.size(), seconds, codec->name);
+    report(input, output, fs::file_size(input), fs::file_size(output), seconds, codec->name);
     return 0;
 }
 
@@ -143,16 +159,13 @@ int cmd_decompress(const Options& options) {
     }
     check_output(input, output, options.force);
 
-    const cpress::Bytes archive = cpress::read_file(input);
-    const cpress::Header header = cpress::read_header(archive);
-    const cpress::Codec* codec = cpress::find_codec(header.codec_id);
-
     const auto start = Clock::now();
-    const cpress::Bytes data = cpress::decompress(archive);
+    cpress::decompress_file(input, output);
     const double seconds = seconds_since(start);
-    cpress::write_file(output, data);
 
-    report(input, output, archive.size(), data.size(), seconds,
+    const cpress::Header header = read_header_of(input);
+    const cpress::Codec* codec = cpress::find_codec(header.codec_id);
+    report(input, output, fs::file_size(input), fs::file_size(output), seconds,
            codec != nullptr ? codec->name : std::string_view{"?"});
     return 0;
 }
@@ -161,16 +174,17 @@ int cmd_info(const Options& options) {
     if (options.paths.size() != 1) {
         throw UsageError("info needs exactly one <archive>");
     }
-    const cpress::Bytes archive = cpress::read_file(options.paths[0]);
-    const cpress::Header header = cpress::read_header(archive);
+    const fs::path archive = options.paths[0];
+    const cpress::Header header = read_header_of(archive);
     const cpress::Codec* codec = cpress::find_codec(header.codec_id);
+    const std::uint64_t archive_size = fs::file_size(archive);
 
     std::cout << "format version  " << static_cast<int>(header.version) << "\n"
               << "codec           " << static_cast<int>(header.codec_id) << " ("
               << (codec != nullptr ? codec->name : std::string_view{"unknown"}) << ")\n"
               << "original size   " << header.original_size << " bytes\n"
-              << "archive size    " << archive.size() << " bytes (" << std::fixed
-              << std::setprecision(2) << percent(archive.size(), header.original_size) << "%)\n"
+              << "archive size    " << archive_size << " bytes (" << std::fixed
+              << std::setprecision(2) << percent(archive_size, header.original_size) << "%)\n"
               << "crc32           " << std::hex << std::setw(8) << std::setfill('0') << header.crc32
               << "\n";
     return 0;

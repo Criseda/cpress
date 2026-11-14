@@ -19,8 +19,10 @@ constexpr auto kTable = make_table();
 
 }  // namespace
 
-std::uint32_t crc32(ByteView data) noexcept {
-    std::uint32_t c = 0xFFFFFFFFu;
+std::uint32_t crc32(ByteView data, std::uint32_t previous) noexcept {
+    // The sum is kept inverted while it runs and inverted again at the end,
+    // so undoing the last inversion picks up where `previous` stopped.
+    std::uint32_t c = previous ^ 0xFFFFFFFFu;
     for (const std::uint8_t byte : data) {
         c = kTable[(c ^ byte) & 0xFFu] ^ (c >> 8);
     }

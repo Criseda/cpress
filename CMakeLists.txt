@@ -41,8 +41,12 @@ if(CPRESS_SANITIZE)
     if(MSVC)
         message(FATAL_ERROR "CPRESS_SANITIZE supports GCC and Clang only")
     endif()
+    # -O1 comes after the build type's own level and replaces it. At -O0
+    # the stage 5 tests run sixty to seventy times slower than in a release
+    # build, and the suite is far over its budget of five minutes; at -O1
+    # the asserts of a Debug build are still on. (Stage 5 brief, test 23.)
     add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all
-        -fno-omit-frame-pointer)
+        -fno-omit-frame-pointer -O1)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
@@ -53,6 +57,7 @@ add_library(cpress_core STATIC
     src/container.cpp
     src/crc32.cpp
     src/io.cpp
+    src/stream.cpp
     src/table_memory.cpp)
 target_include_directories(cpress_core PUBLIC include PRIVATE src)
 target_link_libraries(cpress_core PRIVATE cpress_warnings)
@@ -71,6 +76,15 @@ if(WIN32)
     target_link_libraries(cpress-bench PRIVATE psapi)
 endif()
 
+# The fair baseline's column splitter (bench/baselines.sh).
+add_executable(cpress-columns bench/columns.cpp bench/platform.cpp)
+# src/ for itch/schema.hpp: the message layouts.
+target_include_directories(cpress-columns PRIVATE src)
+target_link_libraries(cpress-columns PRIVATE cpress_core cpress_warnings)
+if(WIN32)
+    target_link_libraries(cpress-columns PRIVATE psapi)
+endif()
+
 # Tests.
 enable_testing()
 add_executable(cpress-tests
@@ -79,18 +93,27 @@ add_executable(cpress-tests
     tests/coder_test.cpp
     tests/context_table_test.cpp
     tests/counter_test.cpp
+    tests/field_coder_test.cpp
     tests/golden_test.cpp
     tests/history_table_test.cpp
+    tests/itch_sample.cpp
+    tests/itch_schema_test.cpp
     tests/logistic_test.cpp
     tests/match_model_test.cpp
+    tests/message_file_test.cpp
+    tests/message_model_test.cpp
     tests/mix6_test.cpp
     tests/mix9_test.cpp
     tests/mixer_test.cpp
     tests/order0_test.cpp
+    tests/order_table_test.cpp
     tests/probability_map_test.cpp
+    tests/residual_test.cpp
     tests/roundtrip.cpp
     tests/state_table_test.cpp
+    tests/stream_test.cpp
     tests/table_allocator_test.cpp)
-target_include_directories(cpress-tests PRIVATE src)
+# bench/ for message_file.hpp, the benchmark tools' reader.
+target_include_directories(cpress-tests PRIVATE src bench)
 target_link_libraries(cpress-tests PRIVATE cpress_core cpress_warnings)
 add_test(NAME cpress-tests COMMAND cpress-tests)

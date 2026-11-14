@@ -1,12 +1,22 @@
 #include "codec/bitwise.hpp"
+#include "codec/buffer_stream.hpp"
+#include "codec/messages.hpp"
 #include "cpress/cpress.hpp"
+#include "cpress/stream.hpp"
+#include "itch/message_model.hpp"
+#include "itch/order_table.hpp"
 #include "model/mix6.hpp"
 #include "model/mix9.hpp"
 #include "model/order0.hpp"
 
+#include <algorithm>
+#include <array>
+#include <atomic>
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <new>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -27,8 +37,8 @@ void stored_decode(ByteView payload, std::uint64_t original_size, Bytes& output)
     output.insert(output.end(), payload.begin(), payload.end());
 }
 
-// Codecs 2 and 3: models with a memory level. The payload is one byte, the
-// level, then what the bitwise driver writes. The encoder chooses the level
+// Codecs 2, 3 and 4: models with a memory level. The payload is one byte,
+// the level, then what the codec's driver writes. The encoder chooses the level
 // from the input size; the decoder uses whatever level the archive states,
 // so it never needs to know how the encoder chose. That choice is the only
 // difference between the two directions.
@@ -36,21 +46,24 @@ void stored_decode(ByteView payload, std::uint64_t original_size, Bytes& output)
 // The functions below are written once for every such model, so the rules
 // for the level byte exist once. `Name` is the codec's name, for messages.
 
-// What the level functions need of a model: a Predictor constructed from a
+// What the level functions need of a model: that it is constructed from a
 // level, the limits on that level, and the two functions of it.
 template <typename Model>
-concept LevelledModel = model::Predictor<Model> && std::constructible_from<Model, int> &&
-                        requires(std::uint64_t size, int level) {
-                            { Model::kMinLevel } -> std::convertible_to<int>;
-                            { Model::kMaxLevel } -> std::convertible_to<int>;
-                            { Model::level_for_size(size) } -> std::same_as<int>;
-                            { Model::memory_bytes(level) } -> std::same_as<std::uint64_t>;
-                        };
+concept Levelled = std::constructible_from<Model, int> && requires(std::uint64_t size, int level) {
+    { Model::kMinLevel } -> std::convertible_to<int>;
+    { Model::kMaxLevel } -> std::convertible_to<int>;
+    { Model::level_for_size(size) } -> std::same_as<int>;
+    { Model::memory_bytes(level) } -> std::same_as<std::uint64_t>;
+};
+
+// A levelled model the bitwise driver can run.
+template <typename Model>
+concept LevelledModel = model::Predictor<Model> && Levelled<Model>;
 
 // Constructs the model. Its tables are the one allocation sized by a field
 // of the archive (see docs/style.md, Errors), so running out of memory for
 // them is reported as an Error, like any other archive that cannot be read.
-template <LevelledModel Model, const std::string_view& Name>
+template <Levelled Model, const std::string_view& Name>
 Model make_levelled_model(int level) {
     try {
         return Model(level);
@@ -70,12 +83,11 @@ void levelled_encode(ByteView input, Bytes& output) {
     codec::encode_bitwise(predictor, input, output);
 }
 
-// The level byte is untrusted: it is checked against the compile-time limits
-// before anything is constructed. Any level within them is accepted,
-// whatever the original size. The rest of the payload is held to the rules
-// of codec::decode_bitwise.
-template <LevelledModel Model, const std::string_view& Name>
-void levelled_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
+// The level a payload states. It is untrusted: it is checked against the
+// compile-time limits before anything is constructed. Any level within
+// them is accepted, whatever the original size.
+template <Levelled Model, const std::string_view& Name>
+int level_of(ByteView payload) {
     if (payload.empty()) {
         throw Error("corrupt archive: " + std::string(Name) + " payload has no level byte");
     }
@@ -85,7 +97,13 @@ void levelled_decode(ByteView payload, std::uint64_t original_size, Bytes& outpu
                     " is outside " + std::to_string(Model::kMinLevel) + " to " +
                     std::to_string(Model::kMaxLevel));
     }
-    auto predictor = make_levelled_model<Model, Name>(level);
+    return level;
+}
+
+// The rest of the payload is held to the rules of codec::decode_bitwise.
+template <LevelledModel Model, const std::string_view& Name>
+void levelled_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
+    auto predictor = make_levelled_model<Model, Name>(level_of<Model, Name>(payload));
     codec::decode_bitwise(predictor, payload.subspan(1), original_size, output);
 }
 
@@ -95,10 +113,50 @@ constexpr std::string_view kMix6Name = "mix6";
 // Codec 3: bit histories, a match model, word contexts and two APMs.
 constexpr std::string_view kMix9Name = "mix9";
 
+// Codec 4: ITCH 5.0 messages, field by field against an order table. The
+// one codec that streams: its benchmark is a file of 8.25 GB.
+constexpr std::string_view kItchName = "itch";
+
+// The orders evicted by every finished compression; see order_table.hpp.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): a counter for the benchmark.
+std::atomic<std::uint64_t> g_evictions_recorded{0};
+
+void itch_encode_stream(ByteSource& input, std::uint64_t size, ByteSink& output) {
+    const int level = itch::MessageModel::level_for_size(size);
+    auto model = make_levelled_model<itch::MessageModel, kItchName>(level);
+    const std::array<std::uint8_t, 1> level_byte{static_cast<std::uint8_t>(level)};
+    output.write(level_byte);
+    static_cast<void>(codec::encode_messages(model, input, output));
+    g_evictions_recorded += model.evictions();
+}
+
+// The rest of the payload is held to the rules of codec::decode_messages.
+void itch_decode_stream(ByteView payload, std::uint64_t original_size, ByteSink& output) {
+    const int level = level_of<itch::MessageModel, kItchName>(payload);
+    auto model = make_levelled_model<itch::MessageModel, kItchName>(level);
+    codec::decode_messages(model, payload.subspan(1), original_size, output);
+}
+
+// The same two on whole buffers.
+void itch_encode(ByteView input, Bytes& output) {
+    codec::SpanSource source(input);
+    codec::VectorSink sink(output);
+    itch_encode_stream(source, input.size(), sink);
+}
+
+// Memory follows the bytes actually decoded: the vector grows as the
+// decoder hands them over, a block at a time.
+void itch_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
+    codec::VectorSink sink(output);
+    itch_decode_stream(payload, original_size, sink);
+}
+
+// The codec used when none is named.
+constexpr std::uint8_t kDefaultCodecId = 3;
+
 // New codecs are added here. Ids are part of the file format: never reuse
-// or renumber one once an archive using it could exist. The last entry is
-// the default.
-constexpr std::array<Codec, 4> kCodecs{{
+// or renumber one once an archive using it could exist.
+constexpr std::array<Codec, 5> kCodecs{{
     {.id = 0,
      .name = "stored",
      .summary = "no compression (stage 0 placeholder)",
@@ -123,9 +181,29 @@ constexpr std::array<Codec, 4> kCodecs{{
      .summary = "bit histories, match model, word contexts, APM",
      .encode = &levelled_encode<model::Mix9, kMix9Name>,
      .decode = &levelled_decode<model::Mix9, kMix9Name>},
+    // Codec 4: experimental until the stage is tagged v0.5.
+    {.id = 4,
+     .name = kItchName,
+     .summary = "ITCH 5.0 messages, field by field against an order table",
+     .encode = &itch_encode,
+     .decode = &itch_decode,
+     .encode_stream = &itch_encode_stream,
+     .decode_stream = &itch_decode_stream},
 }};
 
+// The default is one of them.
+static_assert(std::ranges::any_of(kCodecs,
+                                  [](const Codec& codec) { return codec.id == kDefaultCodecId; }));
+
 }  // namespace
+
+namespace itch {
+
+std::uint64_t evictions_recorded() noexcept {
+    return g_evictions_recorded.load();
+}
+
+}  // namespace itch
 
 std::span<const Codec> codecs() noexcept {
     return kCodecs;
@@ -146,7 +224,7 @@ const Codec* find_codec(std::string_view name) noexcept {
 }
 
 const Codec& default_codec() noexcept {
-    return kCodecs.back();
+    return *find_codec(kDefaultCodecId);
 }
 
 }  // namespace cpress
