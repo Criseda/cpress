@@ -580,6 +580,12 @@ uses the order's own locate, not the message's, which may disagree.
 called once at the end of `code_message`; nothing else changes the
 market.
 
+*Amended after review:* `place_of` returns the order it found with its
+place, or no order with the limit. The encoder needs both, and called
+`at` for the order after `place_of` for the place, which walked the list
+a second time to the same entry, up to `kMaxWalk` steps through a table
+too large for the cache. The decoder still calls `at`, once.
+
 ## 5. Message model
 
 `MessageModel` owns the `FieldCoder` and the `Market`, and codes one
@@ -928,8 +934,9 @@ timestamps that only grow.
 9. Nine orders forced into one bucket (search for them in the test): the
    one with the smallest reference is evicted, its stock's list and
    count are as if it had been deleted, and the other eight are found.
-10. `place_of` returns the limit for an order beyond it and for one that
-    is not there; `at` and `place_of` agree for every live order.
+10. `place_of` returns the limit, and no order, for an order beyond it and
+    for one that is not there; `at` and `place_of` agree on the place and
+    the order for every live order.
 11. Under ASan, at the smallest size, 100,000 random operations read
     nothing outside the table.
 
