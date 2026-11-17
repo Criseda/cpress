@@ -13,3 +13,4 @@ corpus/*
 # The local benchmark log. Left untracked, it would make cpress-bench tag
 # every run after the first as "-dirty".
 bench-results.csv
+__pycache__/

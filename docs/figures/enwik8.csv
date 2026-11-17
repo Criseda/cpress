@@ -1,0 +1,26 @@
+# enwik8 (100,000,000 bytes): size, and nanoseconds per byte each way.
+# source "here": one sitting, 17 November 2026, 22:32 to 23:07 UTC; Intel
+# i9-12900K, Ubuntu 24.04 under WSL 2; every program alone on logical
+# processor 2, the fastest of three runs each way, every round trip checked.
+# cpress is cpress-bench --cpu 2 --repeat 3 at d396ace, GCC 13.3; the others
+# are bench/text-baselines.sh at the versions and options given.
+# source "ltcb": the Large Text Compression Benchmark, updated 17 November
+# 2026, https://mattmahoney.net/dc/text.html. Its enwik8 size; its times are
+# on enwik9, on the machines its notes name, and are not comparable with
+# the others to better than a factor of a few.
+# order0 was measured in the sitting too (61,263,585 bytes, 27.5 and 32.3
+# ns/byte) and is left out of the figure, where it would quadruple the range.
+label,cpress,source,version,options,bytes,compress_ns_per_byte,decompress_ns_per_byte
+mix6,yes,here,cpress d396ace,--codec mix6,22527170,356.3,392.6
+mix9,yes,here,cpress d396ace,--codec mix9,19687838,454.9,575.7
+gzip,no,here,gzip 1.12,-9,36445247,42.1,4.7
+bzip2,no,here,bzip2 1.0.8,-9,29008758,45.4,23.4
+zstd,no,here,zstd 1.5.5,--ultra -22,25333695,702.1,1.6
+xz,no,here,xz 5.4.5,"--lzma2=preset=9e,dict=1GiB,lc=4,pb=0",24703772,747.8,8.6
+brotli,no,here,brotli 1.1.0,-q 11 -w 24,25742001,1504.0,2.0
+7-Zip PPMd,no,here,7-Zip 23.01,-m0=PPMd:mem=1630m:o=10,21060855,199.2,196.7
+bsc,no,here,bsc 3.4.0,-b1000 -e2 -T,20803016,50.4,36.5
+lpaq1,no,here,lpaq1 (24 July 2007),9,19755948,684.0,725.3
+paq8px,no,ltcb,paq8px_v206fix1,-12L,15849084,291916,294847
+nncp,no,ltcb,nncp v3.2,,14915298,241871,238670
+cmix,no,ltcb,cmix v21,-t,14623723,622949,638442

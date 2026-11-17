@@ -177,7 +177,7 @@ that each size can be checked against its row:
 | zstd | `--ultra -22` | Ubuntu 24.04 |
 | xz | `--lzma2=preset=9e,dict=1GiB,lc=4,pb=0` | Ubuntu 24.04 |
 | brotli | `-q 11 -w 24` | Ubuntu 24.04 |
-| 7-Zip, PPMd | `-m0=PPMd:mem=1630m:o=10` | Ubuntu 24.04 (`p7zip-full` or `7zip`) |
+| 7-Zip, PPMd | `-m0=PPMd:mem=1630m:o=10` | Ubuntu 24.04 (`7zip`, whose command is `7z`) |
 | bsc | `-b1000 -e2`, one thread | built from source, Apache-2.0 |
 | lpaq1 | `9` | built from source, GPL, <https://mattmahoney.net/dc/lpaq1.zip> |
 | `cpress` | `order0`, `mix6`, `mix9` | this repository, GCC 13.3 |
@@ -199,7 +199,9 @@ both speeds in ns/byte and peak memory. The `cpress` rows are
 must be the README's to the byte.
 
 Expect about an hour. The slow rows are lpaq1, around a microsecond and a
-half a byte each way, and brotli at quality 11.
+half a byte each way, and brotli at quality 11. *Measured:* 35 minutes, 10
+for `cpress`'s three codecs and 25 for the eight others; lpaq1 ran at 0.7
+µs a byte each way, brotli at 1.5 compressing.
 
 **From the benchmark,** sizes on `enwik8` and times as published, both
 copied into the table with the benchmark's update date:
@@ -229,6 +231,10 @@ it from there.
 | `memory` | Stage 4: ns/byte at levels 12, 16 and 23, before and after | README, stage 4 | write-up |
 | `itch-parts` | What each part of the ITCH design is worth, 6.97 to 3.88 bytes a message | stage 5, Measurements | write-up |
 | `itch-bytes` | Where the bytes go, by field: half of each message is its timestamp | stage 5, Measurements | write-up |
+
+*Amended in implementation:* `order0` is measured in the sitting and
+recorded in the write-up, but not drawn on `ratio-speed`: at 61 MB it
+would stretch the size axis to four times the range of every other point.
 
 `understanding` is the slice, not the whole day, because every program on
 it, `mix9` included, was measured there by the shipped tools; its caption
@@ -341,7 +347,11 @@ In this order:
    record in the write-up's appendix.
 5. **Read the write-up** →
    [docs/write-up.md](docs/write-up.md).
-6. Build, Use, Benchmark: as now, the benchmark section shorter.
+6. Build, Use, Benchmark: as now. *Amended in implementation:* the
+   benchmark section stays whole, since it is the reference for the
+   tool's options and its CSV, which the write-up does not repeat; and a
+   short list of the five codecs comes before Build, since the status
+   paragraph that described them goes.
 7. Archive format and codecs: unchanged, since it is the reference.
 8. Layout, Design rules, Roadmap, Documentation, Licence.
 
@@ -453,6 +463,10 @@ codec; codecs 1 to 4 are already permanent.
    the baseline rows in the commit message.
 4. 6c: the write-up and the README.
 5. 6d: `enwik9`, the licence, and the documents updated for `v1.0`.
+
+*Amended in implementation:* 6b and 6c are one commit. The figures were
+drawn for the write-up and checked where it shows them, and the README's
+records moved into the write-up in the same edit that took them out.
 
 ## What review will look at
 

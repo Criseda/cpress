@@ -1,0 +1,12 @@
+# Stage 4: where the time goes. mix9 on enwik8 with kMaxLevel lowered, before
+# (3aa6395, v0.3's model) and after (9d35533, stage 4). From the README's
+# stage 4 table: Linux, cpress-bench --cpu 2, level 23 at --repeat 3, the
+# others at --repeat 2, 12 November 2026. Levels 12 and 16 fit every history
+# table in the caches.
+level,build,bytes,compress_ns_per_byte,decompress_ns_per_byte
+23,v0.3,19687838,695.8,727.0
+23,stage 4,19687838,472.6,599.1
+16,v0.3,22996218,502.6,545.3
+16,stage 4,22996218,467.7,534.2
+12,v0.3,30228770,464.6,507.0
+12,stage 4,30228770,453.4,487.4

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="364" viewBox="0 0 760 364" role="img" aria-labelledby="title desc">
+<title id="title">Understanding the data: bytes per ITCH message</title>
+<desc id="desc">Bytes per message on the first 30,000,000 messages of the NASDAQ TotalView-ITCH 5.0 feed of 30 December 2019: cpress itch 3.93; columns, each zstd -19 (the fair baseline) 8.04; cpress mix9 8.12; xz -9 9.20; zstd --ultra -22 10.15; zstd -19 10.21; gzip -9 12.84. cpress mix9 sees bytes; cpress itch uses the same coder and mixer on the orders the messages describe.</desc>
+<style>text { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .num { font-variant-numeric: tabular-nums; }</style>
+<rect width="760" height="364" rx="8" fill="#fcfcfb"/>
+<text x="24" y="34" font-size="17" fill="#0b0b0b" font-weight="600">Understanding the data: bytes per ITCH message</text>
+<text x="24" y="56" font-size="13" fill="#52514e">The first 30 million messages of a NASDAQ trading day, 951 MB. Shorter is smaller.</text>
+<line x1="342.4" y1="78" x2="342.4" y2="308" stroke="#e1e0d9" stroke-width="1"/>
+<text x="342.4" y="326" font-size="12" fill="#898781" text-anchor="middle" class="num">0</text>
+<line x1="391.8" y1="78" x2="391.8" y2="308" stroke="#e1e0d9" stroke-width="1"/>
+<text x="391.8" y="326" font-size="12" fill="#898781" text-anchor="middle" class="num">2</text>
+<line x1="441.1" y1="78" x2="441.1" y2="308" stroke="#e1e0d9" stroke-width="1"/>
+<text x="441.1" y="326" font-size="12" fill="#898781" text-anchor="middle" class="num">4</text>
+<line x1="490.5" y1="78" x2="490.5" y2="308" stroke="#e1e0d9" stroke-width="1"/>
+<text x="490.5" y="326" font-size="12" fill="#898781" text-anchor="middle" class="num">6</text>
+<line x1="539.9" y1="78" x2="539.9" y2="308" stroke="#e1e0d9" stroke-width="1"/>
+<text x="539.9" y="326" font-size="12" fill="#898781" text-anchor="middle" class="num">8</text>
+<line x1="589.3" y1="78" x2="589.3" y2="308" stroke="#e1e0d9" stroke-width="1"/>
+<text x="589.3" y="326" font-size="12" fill="#898781" text-anchor="middle" class="num">10</text>
+<line x1="638.6" y1="78" x2="638.6" y2="308" stroke="#e1e0d9" stroke-width="1"/>
+<text x="638.6" y="326" font-size="12" fill="#898781" text-anchor="middle" class="num">12</text>
+<line x1="688" y1="78" x2="688" y2="308" stroke="#e1e0d9" stroke-width="1"/>
+<text x="688" y="326" font-size="12" fill="#898781" text-anchor="middle" class="num">14</text>
+<text x="342.4" y="346" font-size="12" fill="#898781">bytes per message</text>
+<text x="330.4" y="104.5" font-size="13" fill="#52514e" text-anchor="end">cpress itch</text>
+<path d="M342.4 90H435.5A4 4 0 0 1 439.5 94V106A4 4 0 0 1 435.5 110H342.4Z" fill="#2a78d6"/>
+<text x="447.5" y="104.5" font-size="13" fill="#0b0b0b" font-weight="600" class="num">3.93</text>
+<text x="330.4" y="136.5" font-size="13" fill="#52514e" text-anchor="end">columns, each zstd -19 (the fair baseline)</text>
+<path d="M342.4 122H536.9A4 4 0 0 1 540.9 126V138A4 4 0 0 1 536.9 142H342.4Z" fill="#898781"/>
+<text x="548.9" y="136.5" font-size="13" fill="#52514e" class="num">8.04</text>
+<text x="330.4" y="168.5" font-size="13" fill="#52514e" text-anchor="end">cpress mix9</text>
+<path d="M342.4 154H538.8A4 4 0 0 1 542.8 158V170A4 4 0 0 1 538.8 174H342.4Z" fill="#2a78d6"/>
+<text x="550.8" y="168.5" font-size="13" fill="#0b0b0b" font-weight="600" class="num">8.12</text>
+<text x="330.4" y="200.5" font-size="13" fill="#52514e" text-anchor="end">xz -9</text>
+<path d="M342.4 186H565.5A4 4 0 0 1 569.5 190V202A4 4 0 0 1 565.5 206H342.4Z" fill="#898781"/>
+<text x="577.5" y="200.5" font-size="13" fill="#52514e" class="num">9.20</text>
+<text x="330.4" y="232.5" font-size="13" fill="#52514e" text-anchor="end">zstd --ultra -22</text>
+<path d="M342.4 218H589A4 4 0 0 1 593 222V234A4 4 0 0 1 589 238H342.4Z" fill="#898781"/>
+<text x="601" y="232.5" font-size="13" fill="#52514e" class="num">10.15</text>
+<text x="330.4" y="264.5" font-size="13" fill="#52514e" text-anchor="end">zstd -19</text>
+<path d="M342.4 250H590.4A4 4 0 0 1 594.4 254V266A4 4 0 0 1 590.4 270H342.4Z" fill="#898781"/>
+<text x="602.4" y="264.5" font-size="13" fill="#52514e" class="num">10.21</text>
+<text x="330.4" y="296.5" font-size="13" fill="#52514e" text-anchor="end">gzip -9</text>
+<path d="M342.4 282H655.2A4 4 0 0 1 659.2 286V298A4 4 0 0 1 655.2 302H342.4Z" fill="#898781"/>
+<text x="667.2" y="296.5" font-size="13" fill="#52514e" class="num">12.84</text>
+<line x1="342.4" y1="78" x2="342.4" y2="308" stroke="#c3c2b7" stroke-width="1"/>
+</svg>

@@ -1,0 +1,19 @@
+# Where the bytes go in the ITCH design, whole of 12302019.NASDAQ_ITCH50, in
+# bits per message over all 268,744,780 messages. From docs/stage-5.md,
+# Measurements behind the choices, "Where the bytes go". The locate is the
+# stock, named by a number the day's directory gives it.
+field,bits_per_message
+Timestamp,16.33
+"Stock, in order messages",3.52
+"Stock, in adds",2.73
+The order's place in its stock's list,2.41
+"Add: price",1.54
+Message type,1.51
+"Add: shares",0.95
+"Add: reference",0.93
+"Add: side",0.38
+"Stock, in other messages",0.23
+"Replace: price",0.22
+"Replace: reference",0.14
+"Execution: shares",0.05
+Everything else,0.13
