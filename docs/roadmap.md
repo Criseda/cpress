@@ -163,13 +163,15 @@ an order message depends on an order added hours before.
 
 ## Stage 6: release
 
+Brief: [stage-6.md](stage-6.md).
+
 - The write-up: design, the ratio-against-speed plot and the script that
   draws it, an ablation table showing what each component is worth, and the
   market-data result.
 - Submission to the Large Text Compression Benchmark (`enwik9`; the
   decompressor's size counts towards the total).
 - Golden archives for every frozen codec.
-- A licence, chosen before the repository is made public.
+- The licence, Apache-2.0, added before the repository is made public.
 - Tag `v1.0`.
 
 ## After 1.0

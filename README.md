@@ -449,4 +449,5 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/stage-3.md](docs/stage-3.md) | The brief for stage 3 |
 | [docs/stage-4.md](docs/stage-4.md) | The brief for stage 4 |
 | [docs/stage-5.md](docs/stage-5.md) | The brief for stage 5 |
+| [docs/stage-6.md](docs/stage-6.md) | The brief for stage 6 |
 | [docs/style.md](docs/style.md) | Code style and review checklist |

@@ -23,7 +23,7 @@ the current stage before implementing anything. Both are binding.
 ## Where things stand
 
 Stages 0 to 5 are done and tagged (`v0.1` to `v0.5`); codecs 1 to 4 are
-frozen. Stage 6, the release, is next and has no brief yet.
+frozen. Stage 6, the release, is in progress; its brief is `docs/stage-6.md`.
 Update this line and the README roadmap when a stage is tagged.
 Stage targets are sizes on `corpus/enwik8` (100 MB), and stage 5's on an ITCH
 day file (8.25 GB); see `corpus/README.md`.
