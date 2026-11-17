@@ -10,7 +10,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-usage: bench/baselines.sh [--build DIR] [--scratch DIR] [--head N] FILE
+usage: bench/baselines.sh [--build DIR] [--scratch DIR] [--head N] [--jobs N] FILE
 
 Runs every baseline on FILE, a file of ITCH 5.0 messages, and prints a table:
 
@@ -33,6 +33,8 @@ Runs every baseline on FILE, a file of ITCH 5.0 messages, and prints a table:
                  $TMPDIR, removed afterwards); given, it is left in place,
                  with the size of every column in columns.txt
   --head N       how many messages the text model gets
+  --jobs N       run up to N baselines and columns at once, each still on one
+                 core (default 1; more than 1 needs bash 4.3 or later)
 
 What it costs. The scratch directory needs about half the size of FILE: the
 largest thing in it is gzip's output, and then the first N messages beside
@@ -41,6 +43,15 @@ cpress-columns into zstd, at the cost of a pass over FILE for each column.
 On the first 30,000,000 messages of the brief's day, 951 MB, it took 2 hours
 16 minutes of one core; for the whole day, 8.25 GB, expect about sixteen.
 
+With --jobs, the time is that of the longest baseline, zstd --ultra -22,
+once there are cores for the columns beside it: on the whole day, with
+--jobs 12, 2 hours 31 minutes. The scratch directory can hold every
+whole-file compressor's output at once, about one and a half times the
+size of FILE. The sizes are the same. The speeds are not: the jobs share
+the machine's caches and memory, so the wall-clock speeds of the
+whole-file compressors are lower than each would be alone. The fair
+baseline's speed is processor time, which sharing changes less.
+
 The row for cpress's own codec comes from cpress-bench --codec itch FILE.
 EOF
 }
@@ -48,12 +59,14 @@ EOF
 build=build
 scratch=
 head=30000000
+jobs=1
 file=
 while [ $# -gt 0 ]; do
     case "$1" in
         --build) build=${2:?--build needs a directory}; shift 2 ;;
         --scratch) scratch=${2:?--scratch needs a directory}; shift 2 ;;
         --head) head=${2:?--head needs a count}; shift 2 ;;
+        --jobs) jobs=${2:?--jobs needs a count}; shift 2 ;;
         -h | --help) usage; exit 0 ;;
         -*) usage >&2; exit 2 ;;
         *) file=$1; shift ;;
@@ -61,6 +74,16 @@ while [ $# -gt 0 ]; do
 done
 if [ -z "$file" ] || [ ! -f "$file" ]; then
     usage >&2
+    exit 2
+fi
+case "$jobs" in
+    '' | *[!0-9]* | 0) echo "baselines.sh: --jobs needs a whole number above 0" >&2; exit 2 ;;
+esac
+# wait -n, which the pool below waits with, came in bash 4.3.
+if [ "$jobs" -gt 1 ] &&
+    { [ "${BASH_VERSINFO[0]}" -lt 4 ] ||
+        { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 3 ]; }; }; then
+    echo "baselines.sh: --jobs above 1 needs bash 4.3 or later; this is $BASH_VERSION" >&2
     exit 2
 fi
 
@@ -92,25 +115,68 @@ if [ -z "$scratch" ]; then
     keep_scratch=no
 fi
 mkdir -p "$scratch"
+
+# Stops a process and every process it started. A job is a subshell, and
+# stopping only the subshell would leave its compressor running.
+stop_tree() {
+    local child
+    for child in $(pgrep -P "$1" 2> /dev/null || true); do
+        stop_tree "$child"
+    done
+    kill "$1" 2> /dev/null || true
+}
 cleanup() {
-    rm -f "$scratch/packed" "$scratch/head" "$scratch/head.cpz" "$scratch/head.out"
+    local job
+    for job in $(jobs -p); do
+        stop_tree "$job"
+    done
+    rm -f "$scratch"/*.packed "$scratch"/*.seconds "$scratch"/*.row "$scratch"/*.column \
+        "$scratch/head" "$scratch/head.cpz" "$scratch/head.out"
     if [ "$keep_scratch" = no ]; then rm -rf "$scratch"; fi
 }
 trap cleanup EXIT
+
+# The pool. start runs a command as a job, first waiting for one to finish
+# if $jobs are running; finish waits for the rest. A job that fails stops
+# the script, through set -e, when it is waited for. With one job at a time
+# start just runs the command, and the script needs nothing bash 3 lacks.
+# Every job keeps its files in the scratch directory under names of its
+# own, so that jobs running at once never share one.
+running=0
+start() {
+    if [ "$jobs" -eq 1 ]; then
+        "$@"
+        return
+    fi
+    if [ "$running" -ge "$jobs" ]; then
+        wait -n
+        running=$((running - 1))
+    fi
+    "$@" &
+    running=$((running + 1))
+}
+finish() {
+    while [ "$running" -gt 0 ]; do
+        wait -n
+        running=$((running - 1))
+    done
+}
 
 size_of() {
     wc -c < "$1" | tr -d ' '
 }
 
 # Runs a command and leaves the seconds it took, by the wall clock, in
-# $elapsed. Bash's own `time` gives milliseconds everywhere, where `date`
-# gives only whole seconds on macOS. Its report goes to the group's
-# standard error, so the command's own is passed round it on descriptor 3.
+# $elapsed; TAG names the job, and so the file the seconds pass through.
+# Bash's own `time` gives milliseconds everywhere, where `date` gives only
+# whole seconds on macOS. Its report goes to the group's standard error, so
+# the command's own is passed round it on descriptor 3.
 timed() {
-    local TIMEFORMAT=%3R
-    { time "$@" 2>&3; } 3>&2 2> "$scratch/seconds"
-    elapsed=$(< "$scratch/seconds")
-    rm -f "$scratch/seconds"
+    local tag=$1 TIMEFORMAT=%3R
+    shift
+    { time "$@" 2>&3; } 3>&2 2> "$scratch/$tag.seconds"
+    elapsed=$(< "$scratch/$tag.seconds")
+    rm -f "$scratch/$tag.seconds"
 }
 to_file() {
     local out=$1
@@ -139,55 +205,79 @@ messages=$("$columns" --count "$file" | awk '$1 == "all" { print $2 }')
 echo "file      $file: $bytes bytes, $messages messages"
 echo "machine   $(uname -srm), $(awk -F': *' '/model name/ { print $2; exit }' /proc/cpuinfo 2> /dev/null || true)"
 echo "tools     $(gzip --version | head -n 1); $(zstd --version); $(xz --version | head -n 1); $("$cpress" --version)"
+echo "jobs      $jobs at once"
 echo
 printf "%-34s %14s %8s %10s %10s\n" baseline bytes B/msg "comp MB/s" "dec MB/s"
 
-# A compressor that takes the whole file: NAME, then its command, which is
-# given -c FILE to compress and -d -c to decompress.
+# A compressor that takes the whole file, as job NUMBER: NAME, then its
+# command, which is given -c FILE to compress and -d -c to decompress. Its
+# row goes to NUMBER.row, printed in order once every job is done.
 whole_file() {
-    local name=$1 compress_seconds size
-    shift
-    timed to_file "$scratch/packed" "$@" -c "$file"
+    local number=$1 name=$2 compress_seconds size
+    shift 2
+    local packed="$scratch/$number.packed"
+    timed "$number" to_file "$packed" "$@" -c "$file"
     compress_seconds=$elapsed
-    size=$(size_of "$scratch/packed")
-    timed to_nowhere "$1" -d -c "$scratch/packed"
-    rm -f "$scratch/packed"
-    row "$name" "$size" "$compress_seconds" "$elapsed" "$bytes" "$messages"
+    size=$(size_of "$packed")
+    timed "$number" to_nowhere "$1" -d -c "$packed"
+    rm -f "$packed"
+    row "$name" "$size" "$compress_seconds" "$elapsed" "$bytes" "$messages" > "$scratch/$number.row"
 }
-whole_file "gzip -9" gzip -9
-whole_file "zstd -19" zstd -19 -T1
-whole_file "zstd --ultra -22" zstd --ultra -22 -T1
-whole_file "xz -9" xz -9 -T1
 
-# The text model, on what whole-file I/O can hold.
-"$columns" --head "$head" "$file" "$scratch/head" > /dev/null
-head_bytes=$(size_of "$scratch/head")
-head_messages=$("$columns" --count "$scratch/head" | awk '$1 == "all" { print $2 }')
-timed to_nowhere "$cpress" c --codec mix9 "$scratch/head" "$scratch/head.cpz"
-mix9_seconds=$elapsed
-timed to_nowhere "$cpress" d "$scratch/head.cpz" "$scratch/head.out"
-row "cpress mix9, first $head_messages" "$(size_of "$scratch/head.cpz")" "$mix9_seconds" \
-    "$elapsed" "$head_bytes" "$head_messages"
-rm -f "$scratch/head" "$scratch/head.cpz" "$scratch/head.out"
+# The text model, as job 5, on what whole-file I/O can hold.
+text_model() {
+    local head_bytes head_messages mix9_seconds
+    "$columns" --head "$head" "$file" "$scratch/head" > /dev/null
+    head_bytes=$(size_of "$scratch/head")
+    head_messages=$("$columns" --count "$scratch/head" | awk '$1 == "all" { print $2 }')
+    timed 5 to_nowhere "$cpress" c --codec mix9 "$scratch/head" "$scratch/head.cpz"
+    mix9_seconds=$elapsed
+    timed 5 to_nowhere "$cpress" d "$scratch/head.cpz" "$scratch/head.out"
+    row "cpress mix9, first $head_messages" "$(size_of "$scratch/head.cpz")" "$mix9_seconds" \
+        "$elapsed" "$head_bytes" "$head_messages" > "$scratch/5.row"
+    rm -f "$scratch/head" "$scratch/head.cpz" "$scratch/head.out"
+}
 
-# The fair baseline. One line for each column: its name, its size under
-# zstd -19, and the processor seconds zstd spent, user and system. Only
-# zstd is timed: the splitter's time is not the baseline's, as a real tool
-# would split once, and wc's is not either. The times go to a file of their
-# own, and the commands' standard error to the script's, so that nothing
-# they print is read as a size or a time.
-TIMEFORMAT='%3U %3S'
-: > "$scratch/columns.txt"
-for column in $("$columns" --list "$file"); do
-    if ! size=$("$columns" --column "$column" "$file" |
-        { time zstd -19 -T1 -c 2>&3; } 3>&2 2> "$scratch/seconds" | wc -c); then
-        echo "baselines.sh: column $column failed" >&2
+# One column of the fair baseline, as a job: a line of its name, its size
+# under zstd -19, and the processor seconds zstd spent, user and system, in
+# NAME.column. Only zstd is timed: the splitter's time is not the
+# baseline's, as a real tool would split once, and wc's is not either. The
+# times go to a file of their own, and the commands' standard error to the
+# script's, so that nothing they print is read as a size or a time.
+one_column() {
+    local name=$1 size TIMEFORMAT='%3U %3S'
+    if ! size=$("$columns" --column "$name" "$file" |
+        { time zstd -19 -T1 -c 2>&3; } 3>&2 2> "$scratch/$name.seconds" | wc -c); then
+        echo "baselines.sh: column $name failed" >&2
         exit 1
     fi
-    echo "$column" "$size" "$(< "$scratch/seconds")" |
-        awk '{ printf "%s %d %.3f\n", $1, $2, $3 + $4 }' >> "$scratch/columns.txt"
+    echo "$name" "$size" "$(< "$scratch/$name.seconds")" |
+        awk '{ printf "%s %d %.3f\n", $1, $2, $3 + $4 }' > "$scratch/$name.column"
+    rm -f "$scratch/$name.seconds"
+}
+
+# The longest first, so that with a few jobs the short ones fill in beside
+# them.
+start whole_file 3 "zstd --ultra -22" zstd --ultra -22 -T1
+start whole_file 4 "xz -9" xz -9 -T1
+start whole_file 2 "zstd -19" zstd -19 -T1
+start whole_file 1 "gzip -9" gzip -9
+start text_model
+column_names=$("$columns" --list "$file")
+for name in $column_names; do
+    start one_column "$name"
 done
-rm -f "$scratch/seconds"
+finish
+
+for number in 1 2 3 4 5; do
+    cat "$scratch/$number.row"
+    rm -f "$scratch/$number.row"
+done
+: > "$scratch/columns.txt"
+for name in $column_names; do
+    cat "$scratch/$name.column" >> "$scratch/columns.txt"
+    rm -f "$scratch/$name.column"
+done
 
 # The smallest encoding of each column; then each of the fields that every
 # type starts with once, as its columns by type or as its one column across
