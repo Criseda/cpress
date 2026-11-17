@@ -459,6 +459,24 @@ What the figure says:
   among them, and nncp predicts with a transformer
   [[2]](#references) [[7]](#references).
 
+**On `enwik9`,** the first 1 GB of the same dump and the file the benchmark
+ranks on, `mix9` makes **165,953,692 bytes, 1.328 bits a byte**, at 454 ns
+a byte compressing and 561 decompressing. lpaq1 makes 164,508,919
+[[2]](#references): on a file ten times larger, the order is reversed,
+by 0.9%. A model of fixed size would explain it: `mix9`'s 980 MiB of
+tables hold a tenth as much per byte of `enwik9` as of `enwik8`, and lpaq1
+at option 9 has 1.5 GB. The benchmark ranks on the size plus a zip of the
+decompressor, source or executable, whichever is smaller. cpress's
+source, zipped, is 97,522 bytes, which makes 166,051,214 in all.
+
+The order against bsc reverses as well. With a block of 1,000 MB, bsc
+3.25 sorts all of `enwik9` at once and makes 163,884,462 bytes, 1.2%
+under `mix9`, at 23 ns a byte compressing and 8 decompressing on its
+tester's machine [[2]](#references). A block that grows with the file,
+against tables that do not, would explain this reversal too. Of the 238
+programs in the benchmark's table on 17 November 2026, cpress's total
+would place 61st.
+
 Measured here, lpaq1 and xz make the benchmark's sizes to the byte, and
 bzip2 the size of its row for version 1.0.3. gzip's differs by one byte,
 which the file name gzip keeps in its header would explain: here it was
@@ -811,6 +829,28 @@ program's own, from GNU time.
 | gzip 1.12 | `-9` | 36,445,247 | 42.1 | 4.7 | 3.2 / 3.3 |
 
 The 7-Zip size is of a `.7z` archive, which also stores the file's name.
+
+### Stage 6: `enwik9`
+
+`cpress-bench --cpu 2 H:/cpress-corpus/enwik9` at `b897982`, one run,
+finished at 23:29 UTC on 17 November 2026; Windows 11, MSVC 19.51, i9-12900K,
+the machine otherwise quiet. `enwik9` has MD5
+`e206c3450ac99950df65bf70ef61a12d`, as the benchmark lists it.
+
+| Codec | Size (bytes) | Bits/byte | Archive CRC-32 | Compress ns/B | Decompress ns/B | Peak MiB | Large pages MiB |
+|---|---|---|---|---|---|---|---|
+| `mix9` | 165,953,692 | 1.328 | `b29b2b0d` | 454.2 | 561.4 | 3,053.4 | 982.0 |
+
+Peak memory holds the input, the archive and the restored copy beside the
+model; compressing alone peaked at 2,099.7 MiB.
+
+The decompressor for the benchmark: `include/` and `src/` as at
+`b897982`, and a note of the one-line build, zipped at deflate level 9:
+97,522 bytes. Built from those files by the note's one line for GCC
+(13.3) and its one line for MSVC (19.51, which also needs
+`advapi32.lib`), it round-trips. The Windows executable zips to 89,464
+bytes, but it needs the Visual C++ runtime, which Windows does not ship,
+so the source is the smaller decompressor.
 
 ## References
 

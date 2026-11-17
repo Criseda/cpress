@@ -25,6 +25,11 @@ leads with it are on `main`, the repository is public under a licence,
 Compression Benchmark. The listing itself is Matt Mahoney's to make and is
 not waited for.
 
+*Amended in implementation:* the results are not sent in this stage.
+cpress is still being developed, and the owner will send them when
+content with its performance; the stage leaves the email drafted
+(section 6). The rest of the exit stands.
+
 ## Scope
 
 Four parts, in this order. Each is useful alone and may be its own pull
@@ -57,7 +62,7 @@ request.
    benchmark counts it.
 7. The licence: Apache-2.0.
 8. The repository made public, `v1.0` tagged, and the results emailed to
-   the benchmark.
+   the benchmark. *Amended:* the email is drafted, not sent (the exit).
 
 Out of scope:
 
@@ -391,6 +396,15 @@ code ... whichever is smaller". Measure both with Info-ZIP `zip -9`:
 Submit the smaller; expect it to be the source. The binary needs no
 special build.
 
+*Amended in implementation:* `CMakeLists.txt` also builds the tests and
+the benchmark, so it cannot configure from `include/` and `src/` alone.
+The zip holds those two and a note of the one-line build, which was
+checked to build and round-trip with GCC and with MSVC; it was made
+with Python's `zipfile` at deflate level 9, a standard zip that `unzip`
+reads, since Info-ZIP is not installed: 97,522 bytes. The executable
+zips to 89,464 without the Visual C++ runtime it needs, so the source is
+smaller.
+
 **The submission** is an email to Matt Mahoney at the address on the
 rules page, with what the rules ask for: program and version, `enwik8`
 and `enwik9` sizes, options (none: `mix9` is the default), the
@@ -399,6 +413,16 @@ The rules require the program to be "available on the Internet for free
 download", so the email is sent after the repository is public and
 `v1.0` is tagged, and it links to the tag. The owner sends it; the stage
 drafts it.
+
+*Amended in implementation:* the draft is written and kept beside the
+zip, outside the repository, and is not sent with 1.0. The owner sends
+it when content with cpress's performance, with the numbers of the
+version sent; the benchmark lists one row for each program, its best,
+so a later version would replace an earlier one anyway. On the
+benchmark's table of 17 November 2026, 1.0's total would place 61st of
+238 programs, and on none of its frontiers: bsc 3.25 is 1.3% smaller in
+all, at 23 ns a byte compressing and 8 decompressing on its tester's
+machine.
 
 ## 7. Licence and `v1.0`
 
@@ -431,29 +455,32 @@ codec; codecs 1 to 4 are already permanent.
 
 ## Exit criteria
 
-- [ ] Codec 4's golden archive, made by `v0.5`'s code, in
+- [x] Codec 4's golden archive, made by `v0.5`'s code, in
       `tests/golden_test.cpp`.
-- [ ] The text baselines on `enwik8`: every program of section 2, its
+- [x] The text baselines on `enwik8`: every program of section 2, its
       version, size and both speeds, in one sitting, with the `cpress`
       sizes equal to the README's. The rows in the commit message and in
       `docs/figures/`.
-- [ ] Every figure of section 3, drawn by `draw.py` from the checked-in
+- [x] Every figure of section 3, drawn by `draw.py` from the checked-in
       tables, light and dark; running the script again changes no byte.
-- [ ] `docs/write-up.md`, with every section of section 4, the appendix,
+- [x] `docs/write-up.md`, with every section of section 4, the appendix,
       and a reference for every number not measured by this project.
-- [ ] The README of section 5.
-- [ ] `enwik9`: the archive's size and CRC-32, both speeds and peak
+- [x] The README of section 5.
+- [x] `enwik9`: the archive's size and CRC-32, both speeds and peak
       memory, and the decompressor's zip size, in the README and the
       write-up.
-- [ ] `LICENSE`: Apache-2.0, as published.
+- [x] `LICENSE`: Apache-2.0, as published.
 - [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan: CI on
       the closing commit is the record.
-- [ ] clang-format clean, no compiler warnings.
-- [ ] README, `docs/roadmap.md`, `docs/idea.md` (its reference table is
+- [x] clang-format clean, no compiler warnings.
+- [x] README, `docs/roadmap.md`, `docs/idea.md` (its reference table is
       the benchmark's, on other machines, and says so), `corpus/README.md`
-      and `CLAUDE.md` updated; `v1.0` tagged.
-- [ ] The repository public, and the email to the benchmark sent by the
-      owner.
+      and `CLAUDE.md` updated, and the version in `CMakeLists.txt` set to
+      1.0.0. *It had said 0.4.0 since stage 4, so `cpress --version` was
+      wrong at `v0.5`.*
+- [ ] `v1.0` tagged.
+- [ ] The repository public. *Amended:* the email to the benchmark is
+      drafted and left to the owner, after 1.0 (section 6).
 
 ## Suggested commits
 

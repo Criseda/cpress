@@ -14,7 +14,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | 3 | lpaq-class model | 20 MB or better (19.7 MB) | done |
 | 4 | Performance | same archive; compress 25%, decompress 10% faster (32%, 18%) | done |
 | 5 | Market data | 4.00 bytes per message or better; 45% under column-split + zstd (3.88; 52%) | done |
-| 6 | Release | write-up published | 2 weeks |
+| 6 | Release | write-up published ([write-up.md](write-up.md)) | done |
 
 ## How stages run
 
@@ -161,15 +161,17 @@ fraction of any baseline's speed; that is part of the result. The
 listing. Blocks and threads, which issue #4 left to this stage, stay out:
 an order message depends on an order added hours before.
 
-## Stage 6: release
+## Stage 6: release (done)
 
 Brief: [stage-6.md](stage-6.md).
 
 - The write-up: design, the ratio-against-speed plot and the script that
   draws it, an ablation table showing what each component is worth, and the
   market-data result.
-- Submission to the Large Text Compression Benchmark (`enwik9`; the
-  decompressor's size counts towards the total).
+- `enwik9` measured for the Large Text Compression Benchmark, with the
+  decompressor's size, which counts towards the total. The submission is
+  drafted, and sent after 1.0, when the owner is content with cpress's
+  performance.
 - Golden archives for every frozen codec.
 - The licence, Apache-2.0, added before the repository is made public.
 - Tag `v1.0`.
@@ -184,6 +186,10 @@ Only if the classical design is finished and written up:
 - Speed beyond stage 4: the computation, a block-parallel codec, and the
   rest measured in issue #4.
 - Decoder fuzzing as a permanent CI job.
+
+Whatever comes of these, the submission to the Large Text Compression
+Benchmark that stage 6 drafted is sent when the owner is content with
+cpress's performance on `enwik9`.
 
 ## Standing engineering work
 

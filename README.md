@@ -41,6 +41,7 @@ Benchmark's own, timed on other machines.*
 | Input | cpress | For comparison | Record |
 |---|---|---|---|
 | `enwik8`, the first 100 MB of English Wikipedia | **19,687,838 bytes**, 1.575 bits a byte (`mix9`) | lpaq1: 19,755,948 bytes, and slower on the same machine | [stage 6](docs/write-up.md#stage-6-the-text-compressors-on-enwik8) |
+| `enwik9`, the first 1 GB | **165,953,692 bytes**, 1.328 bits a byte (`mix9`) | lpaq1: 164,508,919 bytes, on the benchmark | [stage 6](docs/write-up.md#stage-6-enwik9) |
 | A NASDAQ ITCH day, 8.25 GB, 268,744,780 messages | **3.884 bytes a message** (`itch`) | Every field a column, each `zstd -19`: 8.036. `xz -9`: 9.261 | [stage 5](docs/write-up.md#stage-5-market-data) |
 | Another day, not used in design | **3.843 bytes a message** | The columns: 7.901 | [stage 5](docs/write-up.md#stage-5-market-data) |
 
@@ -230,7 +231,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 3 | Bit-history states, probability maps, match model | done: 19.7 MB (target 20 MB or better) |
 | 4 | Large pages, prefetching ahead; same archives | done: same archive, compress 32% faster, decompress 18% (target 25% and 10%) |
 | 5 | Market data: an order-table model for exchange feeds | done, on an ITCH day file: 3.88 bytes per message, 52% under column-split + zstd (target 4.00 or better, and 45%) |
-| 6 | Write-up and benchmark submission | in progress: [docs/stage-6.md](docs/stage-6.md) |
+| 6 | Write-up and release | done: [the write-up](docs/write-up.md); `enwik9` 165,953,692 bytes, and 97,522 for the decompressor |
 
 ## Documentation
 
@@ -246,3 +247,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/stage-5.md](docs/stage-5.md) | The brief for stage 5 |
 | [docs/stage-6.md](docs/stage-6.md) | The brief for stage 6 |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
+
+## Licence
+
+Apache License 2.0; see [LICENSE](LICENSE).
