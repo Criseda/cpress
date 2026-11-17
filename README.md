@@ -1,5 +1,11 @@
 # cpress
 
+[![CI](https://github.com/Criseda/cpress/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Criseda/cpress/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/Criseda/cpress?label=version&sort=semver)](https://github.com/Criseda/cpress/tags)
+[![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C)](#build)
+[![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen)](#build)
+
 > The key to compression is to understand the data you want to compress.
 >
 > Matt Mahoney, [*Data Compression Explained*](https://mattmahoney.net/dc/dce.html#Section_15), section 1.5
