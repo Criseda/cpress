@@ -37,7 +37,7 @@
 //               be consumed exactly, and the original size may not exceed
 //               33,792 times its size. The decoder allocates what the level
 //               calls for, from 12.3 MiB at 10 to 364 MiB at 23, whatever
-//               the original size. Experimental until v0.5.
+//               the original size. Frozen at v0.5.
 #pragma once
 
 #include <array>

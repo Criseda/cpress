@@ -22,10 +22,8 @@ the current stage before implementing anything. Both are binding.
 
 ## Where things stand
 
-Stages 0 to 4 are done and tagged (`v0.1` to `v0.4`). Stage 5 is under way;
-its brief is `docs/stage-5.md`. Codec 4 (`itch`) is implemented and
-experimental: it is not frozen until the exit criteria at the end of the
-brief are met, which need the whole day file, and the stage is tagged.
+Stages 0 to 5 are done and tagged (`v0.1` to `v0.5`); codecs 1 to 4 are
+frozen. Stage 6, the release, is next and has no brief yet.
 Update this line and the README roadmap when a stage is tagged.
 Stage targets are sizes on `corpus/enwik8` (100 MB), and stage 5's on an ITCH
 day file (8.25 GB); see `corpus/README.md`.
@@ -64,7 +62,9 @@ build/Release/cpress-bench corpus/enwik8        # build/cpress-bench off Windows
 - Reads cleanly from top to bottom, and every comment is true of the code as
   it now stands. Run the review checklist in `docs/style.md`.
 - If it claims a size or speed result, the `cpress-bench` numbers are in the
-  commit message.
+  commit message. Measure what the claim needs and no more: sizes once per
+  change to the predictions, baselines once per file and tool version,
+  speeds on a quiet machine and a slice. See Measurement in `docs/style.md`.
 - README and `cpress.hpp` updated if the format or roadmap changed.
 
 ## Working style

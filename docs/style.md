@@ -164,6 +164,39 @@ bits, not `p`.
   not only small ones.
 - Once a codec has shipped, a small golden archive is checked in and must
   keep decoding forever.
+- CI is the record for compilers and sanitizers: it builds and tests every
+  push with MSVC, GCC, Clang and ASan + UBSan. Locally, build and run
+  `ctest` with one compiler before pushing; use another only to chase a
+  failure CI found.
+
+## Measurement
+
+A measurement decides a claim. Before a long run, name the claim it
+decides and the smallest input that decides it; a run that decides none is
+not made.
+
+- **A size is a fact of the commit.** Model and coder are deterministic,
+  so an archive's size depends on the code and the input, not on the
+  machine, the compiler or the load. Measure it once per change to the
+  predictions; it stands until they change again. Runs that report only
+  sizes can share the machine with each other.
+- **A baseline is measured once.** Another program at a fixed version on a
+  fixed file makes the same output whatever our code does. Record it with
+  the versions, and run it again only when the file, the tool or its
+  settings change.
+- **A speed needs a quiet machine and little else.** One program at a
+  time, pinned, repeated, the minimum taken (stage 4). The input needs to
+  be large enough for a steady rate, minutes of work, not the largest file
+  there is. Re-measure only the rows a change could have moved.
+- **A target is checked where it is set, once.** A target on a whole file
+  is run on the whole file at the commit that closes the stage. During
+  development a slice is enough.
+- **One unseen input tests generalisation.** A second file not used in
+  design, with its own fair baseline, says whether the constants were
+  fitted to the first. More files say little more.
+- **An ablation measured in design stands** while the shipped code makes
+  the prototype's size. Re-measure only a part whose code departs from the
+  prototype's.
 
 ## Format stability
 

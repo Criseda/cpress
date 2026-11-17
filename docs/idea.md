@@ -104,8 +104,10 @@ around a microsecond per byte.
 
 ## Honest risks
 
-- **The market-data margin is unproven.** Column splitting plus zstd may get
-  most of the gain. If it does, the write-up says so.
+- **The market-data margin.** Column splitting plus zstd might have got
+  most of the gain. Measured in stage 5, it did not: on a whole day of the
+  feed cpress is 52% smaller than the columns, and 51% on a second day
+  not used in design.
 - **Silent non-determinism.** One floating-point operation or one piece of
   undefined behaviour in the model makes archives that only decode on the
   machine that wrote them. The style rules exist largely to prevent this.
