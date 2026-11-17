@@ -1230,16 +1230,19 @@ is the simpler.
       prototype's size.
 - [x] Evictions on the day file, and peak memory in both directions.
 - [x] `enwik8` through the escape, once.
-- [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan,
+- [x] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan,
       within the time budget of test 23: CI on the closing commit is the
-      record.
+      record. *CI passed on `4cca8b0`, whose tree is the merge's: MSVC,
+      GCC, Clang on Linux and macOS, and ASan + UBSan in 2 minutes 59
+      seconds.*
 - [x] clang-format clean, clang-tidy clean, no compiler warnings. *Tidy
       (LLVM 22.1) was run on Windows, so the Linux block of
       `table_memory.cpp` was not seen by it; CI builds with warnings as
       errors.*
-- [ ] README (status, results, codec table, usage, layout, roadmap),
+- [x] README (status, results, codec table, usage, layout, roadmap),
       `cpress.hpp`, `docs/roadmap.md`, `docs/idea.md`, `corpus/README.md`
-      and `CLAUDE.md` updated; tag `v0.5`.
+      and `CLAUDE.md` updated; tag `v0.5`. *Tagged on the stage's merge,
+      `10889c5`.*
 
 *Amended in closing:* the criteria asked for more measurement than the
 claims need; `docs/style.md` now says what a measurement is for. The
