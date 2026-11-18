@@ -140,7 +140,7 @@ plain, and says nothing about its author.
 ## 1. Codec 4's golden archive
 
 `tests/golden_test.cpp` has an archive for codecs 1 to 3. Codec 4 was
-frozen at `v0.5` without one; the rule in [style.md](style.md), Tests, is
+frozen at `v0.5` without one; the rule in [style.md](../style.md), Tests, is
 that it gets one once it has shipped.
 
 - **The input** is binary, so it is checked in as a byte array, not a
@@ -328,9 +328,9 @@ ones the write-up is expected to need:
   `mix9`; the code credits name which.
 - J. L. Kelly, "A New Interpretation of Information Rate", *Bell System
   Technical Journal* 35(4), 1956: only if the write-up keeps
-  [idea.md](idea.md)'s point about betting.
+  [idea.md](../idea.md)'s point about betting.
 - Nasdaq TotalView-ITCH 5.0 specification, and the day files
-  ([corpus/README.md](../corpus/README.md)).
+  ([corpus/README.md](../../corpus/README.md)).
 - cmix, Byron Knoll, <https://www.byronknoll.com/cmix.html>; nncp,
   Fabrice Bellard, <https://bellard.org/nncp/>: only as the points they
   are on the figure.
@@ -351,7 +351,7 @@ In this order:
    the ITCH day for `itch` against the fair baseline. Each links to its
    record in the write-up's appendix.
 5. **Read the write-up** →
-   [docs/write-up.md](docs/write-up.md).
+   [docs/write-up.md](../write-up.md).
 6. Build, Use, Benchmark: as now. *Amended in implementation:* the
    benchmark section stays whole, since it is the reference for the
    tool's options and its CSV, which the write-up does not repeat; and a
@@ -427,7 +427,7 @@ machine.
 ## 7. Licence and `v1.0`
 
 **The licence** must be chosen before the repository is public. Every
-line of the project was written for it ([idea.md](idea.md), Reading: no
+line of the project was written for it ([idea.md](../idea.md), Reading: no
 code or tables copied from other compressors, several of which are GPL),
 so any licence is open to it. What the field uses, each from the
 project's own licence file or page on 17 November 2026: zstd, BSD or

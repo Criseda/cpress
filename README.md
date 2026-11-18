@@ -194,7 +194,7 @@ an ITCH 5.0 message or one byte that is not part of a message, so that any
 input round-trips. A message is recognised by its 2-byte big-endian length
 being the length of the type that follows; the length is not coded, and the
 fields are coded in an order of the model's choosing, as differences from
-what the orders seen so far predict ([docs/stage-5.md](docs/stage-5.md)).
+what the orders seen so far predict ([docs/stages/stage-5.md](docs/stages/stage-5.md)).
 A message can cost fewer bits than it has bytes, so the header's original
 size may be up to 33,792 times the payload's size. The level is the base-2
 logarithm of the number of orders the model can hold at once: 12.3 MiB of
@@ -246,7 +246,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/write-up.md](docs/write-up.md) | How cpress works, what each part is worth, and every measurement |
 | [docs/idea.md](docs/idea.md) | Why the project exists, how context mixing works, goals and non-goals |
 | [docs/roadmap.md](docs/roadmap.md) | Every stage in detail, with exit criteria |
-| `docs/stage-N.md`: [1](docs/stage-1.md), [2](docs/stage-2.md), [3](docs/stage-3.md), [4](docs/stage-4.md), [5](docs/stage-5.md), [6](docs/stage-6.md) | The design record, a brief for each stage: the plan, the alternatives measured and the one chosen, the exit criteria, and every departure from the plan with its reason. Stage 3's sets out the bit-history states and stage 5's the `itch` model, which the code cites |
+| `docs/stages/stage-N.md`: [1](docs/stages/stage-1.md), [2](docs/stages/stage-2.md), [3](docs/stages/stage-3.md), [4](docs/stages/stage-4.md), [5](docs/stages/stage-5.md), [6](docs/stages/stage-6.md) | The design record, a brief for each stage: the plan, the alternatives measured and the one chosen, the exit criteria, and every departure from the plan with its reason. Stage 3's sets out the bit-history states and stage 5's the `itch` model, which the code cites |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
 
 ## Licence

@@ -1,6 +1,6 @@
 # What each part of the ITCH design is worth, whole of 12302019.NASDAQ_ITCH50,
 # 268,744,780 messages. Each row adds one thing to the row above. From the
-# prototype in docs/stage-5.md, Measurements behind the choices; the shipped
+# prototype in docs/stages/stage-5.md, Measurements behind the choices; the shipped
 # codec makes the last row's size within 1,820 bytes.
 label,bytes,messages
 "Every field in its contexts, every value as it is",1872246661,268744780
