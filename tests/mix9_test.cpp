@@ -20,6 +20,7 @@
 namespace cpress::test {
 namespace {
 
+using model::Mix10;
 using model::Mix9;
 
 static_assert(model::Predictor<Mix9>);
@@ -38,6 +39,14 @@ static_assert(Mix9::memory_bytes(16) == 13'166'976);
 static_assert(Mix9::memory_bytes(20) == 140'962'176);
 static_assert(Mix9::memory_bytes(22) == 549'906'816);
 static_assert(Mix9::memory_bytes(23) == 1'028'057'472);
+
+// Mix10, codec 5's model: an order-7 table more, and a level up to 24.
+static_assert(Mix10::kTables == Mix9::kTables + 1);
+static_assert(Mix10::level_for_size(std::uint64_t{1} << 40) == 24);
+static_assert(Mix10::memory_bytes(10) == 4'555'860);
+static_assert(Mix10::memory_bytes(23) == 1'162'280'020);
+static_assert(Mix10::memory_bytes(24) == 2'252'799'060);
+static_assert(Mix10::table_slot_bits(Mix10::kTables - 1, 24) == 24);
 
 // table_slot_bits: orders 1 and 2 capped, the rest at the level.
 static_assert(Mix9::table_slot_bits(0, Mix9::kMaxLevel) == 14);

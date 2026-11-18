@@ -387,10 +387,24 @@ it:
 - **The payload** is `mix9`'s level for the stream, the stream's size in
   8 bytes, then the stream as codec 3 codes bytes. The decoder rebuilds
   the stream, then the original.
-- **The model is `mix9`'s,** the same class codec 3 uses. Level 24 and
-  an order-7 table gave another 2.2% on `enwik9`; they need a model
-  that is not codec 3's, and are measured for time before they are
-  added, as the brief's scope says.
+- **The model is `Mix10`.** `mix9`'s class becomes a template on its
+  number of orders and its largest level: `Mix9` is `ContextMix<6, 23>`,
+  codec 3's, byte for byte as it was (its golden archive still passes),
+  and `Mix10` is `ContextMix<7, 24>`, with an order-7 table and twice the
+  memory at its largest level. On `enwik9` they gave another 2.3% for
+  about 13% more time (section 3), which the exit's time allows.
+
+*Amended in implementation:* codec 5 was first committed with `Mix9`
+behind the transform, and its Windows record then, MSVC 19.51 at
+`1b5fe3c`, logical processor 2, was:
+
+| | Bytes | Compress ns/B | Decompress ns/B | Peak MiB |
+|---|---|---|---|---|
+| `enwik8`, fastest of 3 | 19,048,501 | 320.3 | 418.3 | 1,257 |
+| `enwik9`, one run | 157,526,731 | 324.7 | 412.1 | 3,644 |
+
+That already met the exit: about 157.6 MB in all, compressing at 325 ns
+a byte. `Mix10` trades some of that time for size.
 - **Untrusted input:** every field of the stream is checked as it is
   read: the number of code bytes, their order, the flags, the code
   lengths, each dictionary word's letters and length, the number of

@@ -38,14 +38,16 @@
 //               not exceed 33,792 times its size. The decoder allocates what
 //               the level calls for, from 12.3 MiB at 10 to 364 MiB at 23,
 //               whatever the original size. Frozen at v0.5.
-//   5   words   One byte, the model's memory level, 10 to 23; then the size
-//               of a word stream, 8 bytes; then that stream, coded as mix9
-//               codes bytes, with the same two rules for the bytes after the
-//               size. The stream is the original with its frequent words
-//               replaced by codes, and a dictionary of them at its head
-//               (src/text/word_transform.hpp); it must expand to exactly the
-//               original size. The decoder allocates what the level calls
-//               for, as mix9's does. Experimental until v1.1.
+//   5   words   One byte, the model's memory level, 10 to 24; then the size
+//               of a word stream, 8 bytes; then that stream, as arithmetic-
+//               coded bits and 4 flush bytes, with the same two rules for
+//               the bytes after the size. The model is mix9's with an
+//               order-7 table (Mix10). The stream is the original with its
+//               frequent words replaced by codes, and a dictionary of them
+//               at its head (src/text/word_transform.hpp); it must expand
+//               to exactly the original size. The decoder allocates what the
+//               level calls for, from 4.3 MiB at 10 to 2,148.4 MiB at 24,
+//               and the stream. Experimental until v1.1.
 #pragma once
 
 #include <array>

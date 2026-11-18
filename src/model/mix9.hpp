@@ -51,6 +51,13 @@
 // Update rule: every map, table, the match model, the mixer's selected
 // weights and the APMs' nearer points learn each bit; see each component.
 //
+// Two models, one class. ContextMix is a template on the number of byte
+// contexts and the largest level, and everything above is written in terms
+// of them. Mix9 is ContextMix<6, 23>, codec 3's model, frozen at v0.3.
+// Mix10 is ContextMix<7, 24>, codec 5's: an order-7 table as well, so ten
+// predictions, and a largest level with twice the memory, for the word
+// streams of files of a gigabyte (docs/stages/stage-7.md, section 3).
+//
 // Technique: this is the lpaq class of compressor, after Matt Mahoney's
 // lpaq1 (2007): bit-history states in checked nibble slots, read through
 // state maps, a match model and a word context, mixed and refined by
@@ -148,11 +155,12 @@ static_assert(order_slot_bits(2) == 22);
 
 }  // namespace detail
 
-class Mix9 {
+template <int Orders, int MaxLevel>
+class ContextMix {
 public:
     // The byte contexts: 1 to kOrders bytes.
-    static constexpr int kOrders = 6;
-    static_assert(kOrders <= kMaxOrder);
+    static constexpr int kOrders = Orders;
+    static_assert(kOrders >= 2 && kOrders <= kMaxOrder);
 
     // The history tables: the orders, then the word and bigram contexts.
     static constexpr std::size_t kTables = static_cast<std::size_t>(kOrders) + 2;
@@ -160,7 +168,7 @@ public:
 
     // The level is log2 of the slots in each history table but order 1's.
     static constexpr int kMinLevel = 10;
-    static constexpr int kMaxLevel = 23;
+    static constexpr int kMaxLevel = MaxLevel;
     static_assert(detail::order_slot_bits(3) > kMaxLevel, "only orders 1 and 2 are capped");
 
     // The smallest level with 2^level >= size, within the two limits: about
@@ -184,8 +192,8 @@ public:
     // word and bigram) at `level`: the level, or less for an order with too
     // few contexts to use that many.
     //
-    // The order 2 cap, 2^22, binds only at level 23, and changes no
-    // prediction there: at 2^22 slots, as at 2^23, every order 2 key has a
+    // The order 2 cap, 2^22, binds from level 23, and changes no
+    // prediction there: at 2^22 slots, as at more, every order 2 key has a
     // bucket with room for it and a check no other key there shares, so no
     // slot is ever shared or evicted (mix9_test.cpp checks every key).
     [[nodiscard]] static constexpr int table_slot_bits(std::size_t table, int level) noexcept {
@@ -253,7 +261,7 @@ public:
 
     // Allocates everything for `level`, in [kMinLevel, kMaxLevel]. Throws
     // std::bad_alloc if there is no memory.
-    explicit Mix9(int level)
+    explicit ContextMix(int level)
         : tables_(make_tables(level, std::make_index_sequence<kTables>())),
           maps_(make_maps(std::make_index_sequence<kTables>())),
           match_(match_buffer_bits(level), match_hash_bits(level)),
@@ -264,7 +272,7 @@ public:
     }
 
     [[nodiscard]] std::uint32_t predict() noexcept {
-        Mixer<kInputs>::Stretched st{};
+        typename Mixer<kInputs>::Stretched st{};
         for (std::size_t i = 0; i < kTables; ++i) {
             st[i] = stretch(maps_[i].p12(tables_[i].state(node_)));
         }
@@ -420,10 +428,14 @@ private:
     std::uint32_t partial_ = 1;            // the byte's bits so far, after a leading 1
 };
 
-static_assert(Predictor<Mix9>);
-// Without this, a hint whose signature drifted would leave Mix9 short of the
-// concept, the coding loops would quietly stop calling it, and every test
-// of the output would still pass.
-static_assert(Prefetching<Mix9>);
+// Codec 3's model, frozen at v0.3, and codec 5's.
+using Mix9 = ContextMix<6, 23>;
+using Mix10 = ContextMix<7, 24>;
+
+static_assert(Predictor<Mix9> && Predictor<Mix10>);
+// Without this, a hint whose signature drifted would leave the models short
+// of the concept, the coding loops would quietly stop calling it, and every
+// test of the output would still pass.
+static_assert(Prefetching<Mix9> && Prefetching<Mix10>);
 
 }  // namespace cpress::model
