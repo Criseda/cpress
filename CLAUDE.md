@@ -24,11 +24,11 @@ the current stage before implementing anything. Both are binding.
 ## Where things stand
 
 Stages 0 to 6 are done and tagged (`v0.1` to `v0.5`, then `v1.0`); codecs
-1 to 4 are frozen. The roadmap is finished; what comes next is in its
-"After 1.0", and needs a brief of its own.
+1 to 4 are frozen. Stage 7, text toward the benchmark's frontier, is in
+progress: `docs/stages/stage-7.md`.
 Update this line and the README roadmap when a stage is tagged.
-Stage targets are sizes on `corpus/enwik8` (100 MB), and stage 5's on an ITCH
-day file (8.25 GB); see `corpus/README.md`.
+Stage targets are sizes on `corpus/enwik8` (100 MB), stage 5's on an ITCH
+day file (8.25 GB) and stage 7's on `enwik9` (1 GB); see `corpus/README.md`.
 
 ## Commands
 
