@@ -47,7 +47,7 @@
 //               at its head (src/text/word_transform.hpp); it must expand
 //               to exactly the original size. The decoder allocates what the
 //               level calls for, from 4.3 MiB at 10 to 4,228.4 MiB at 25,
-//               and the stream. Experimental until v1.1.
+//               and the stream. Frozen at v1.1.
 #pragma once
 
 #include <array>

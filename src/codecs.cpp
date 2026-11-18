@@ -228,7 +228,8 @@ constexpr std::array<Codec, 6> kCodecs{{
      .decode = &itch_decode,
      .encode_stream = &itch_encode_stream,
      .decode_stream = &itch_decode_stream},
-    // Codec 5: experimental until the stage is tagged v1.1.
+    // Codec 5: a dictionary of the input's words, then Mix10. Frozen at
+    // v1.1: its output is permanent.
     {.id = 5,
      .name = kWordsName,
      .summary = "a dictionary of the input's words, then mix9 with order 7",

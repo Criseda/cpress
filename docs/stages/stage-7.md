@@ -482,9 +482,10 @@ ways (section 1).
 - [x] clang-format clean, clang-tidy clean, no compiler warnings.
       *Tidy (LLVM 22.1) on Windows; GCC 15 found a warning MSVC and GCC
       13 did not (`b423cbe`).*
-- [ ] The write-up (the transform's section, the new point, the records),
+- [x] The write-up (the transform's section, the new point, the records),
       the README, `cpress.hpp`, `docs/roadmap.md` and `CLAUDE.md` updated;
-      tag `v1.1`. *All updated; the tag waits for the merge.*
+      tag `v1.1`. *`v1.1` tags `029c588`, the merge of pull request #16;
+      codec 5 is frozen there.*
 
 ## Suggested commits
 
