@@ -470,16 +470,18 @@ codec; codecs 1 to 4 are already permanent.
       memory, and the decompressor's zip size, in the README and the
       write-up.
 - [x] `LICENSE`: Apache-2.0, as published.
-- [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan: CI on
-      the closing commit is the record.
+- [x] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan: CI on
+      the closing commit is the record. *CI passed on `72e1fd3`, whose
+      tree is the merge's: MSVC, GCC, Clang on Linux and macOS, and
+      ASan + UBSan.*
 - [x] clang-format clean, no compiler warnings.
 - [x] README, `docs/roadmap.md`, `docs/idea.md` (its reference table is
       the benchmark's, on other machines, and says so), `corpus/README.md`
       and `CLAUDE.md` updated, and the version in `CMakeLists.txt` set to
       1.0.0. *It had said 0.4.0 since stage 4, so `cpress --version` was
       wrong at `v0.5`.*
-- [ ] `v1.0` tagged.
-- [ ] The repository public. *Amended:* the email to the benchmark is
+- [x] `v1.0` tagged. *On the stage's merge, `4705645`.*
+- [x] The repository public, after the tag. *Amended:* the email to the benchmark is
       drafted and left to the owner, after 1.0 (section 6).
 
 ## Suggested commits
