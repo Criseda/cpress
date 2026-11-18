@@ -15,7 +15,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | 4 | Performance | same archive; compress 25%, decompress 10% faster (32%, 18%) | done |
 | 5 | Market data | 4.00 bytes per message or better; 45% under column-split + zstd (3.88; 52%) | done |
 | 6 | Release | write-up published ([write-up.md](write-up.md)) | done |
-| 7 | Text, toward the frontier | `enwik9` under 160,364,392 bytes in all, compressing under 394 ns a byte | in progress |
+| 7 | Text, toward the frontier | `enwik9` under 160,364,392 bytes in all, compressing under 394 ns a byte (152,011,608; 365 ns) | done |
 
 ## How stages run
 
@@ -177,7 +177,7 @@ Brief: [stage-6.md](stages/stage-6.md).
 - The licence, Apache-2.0, added before the repository is made public.
 - Tag `v1.0`.
 
-## Stage 7: text, toward the frontier
+## Stage 7: text, toward the frontier (done)
 
 Brief: [stage-7.md](stages/stage-7.md).
 
@@ -194,6 +194,13 @@ would be on the compression-time frontier.
 - Codec 5: the transform and the model, with a larger level and an
   order-7 table if they pay for their time.
 - Tag `v1.1`.
+
+Done: codec 5, `words`, a dictionary of the input's own words in front of
+`Mix10`, `mix9`'s model with an order-7 table and a largest level of 25.
+`enwik9` is 151,906,618 bytes, 152,011,608 with the source zipped,
+compressing in 365 ns a byte: 43rd of 238 on the benchmark's table, and
+on its compression frontier by its own rule. On this machine mcm 0.83 is
+still 4.6% smaller and faster both ways.
 
 ## After 1.0
 

@@ -105,3 +105,13 @@ outside the repository. Put FILE on the Linux side's own disk: a file
 under `/mnt/c` is read through a slow mount, and the time is the mount's.
 On `enwik8` the eight programs took 25 minutes at `--repeat 3`. The
 write-up's figures are drawn from the result by `docs/figures/draw.py`.
+
+`--mcm MCM` adds mcm 0.83 at `-x11`, about 6 GB of memory: the commit
+`02b4e7d` of <https://github.com/mathieuchartier/mcm>, built by its own
+`make.sh`; at it, mcm makes the benchmark's 144,854,575 bytes of `enwik9`.
+`--only NAMES` runs only the programs named, by the CSV's first column, so
+that an `enwik9` sitting need not run all of them:
+
+```
+bench/text-baselines.sh --cpu 2 --repeat 1 --mcm MCM --only mcm FILE
+```

@@ -395,6 +395,21 @@ it:
   7 and level 24 gave another 2.3% on `enwik9` for about 13% more time
   (section 3), which the exit's time allows; level 25 is below.
 
+*Measured in implementation:* the template leaves codec 3's archives as
+they were, but not quite its time on MSVC. On the first 30,000,000 bytes
+of `enwik8`, logical processor 2, `1b5fe3c` (before) and `85aaec9`
+(after) in turn, three rounds of the fastest of three, both archives
+6,137,466 bytes (CRC `8ccac4df`):
+
+| ns a byte | Before | After |
+|---|---|---|
+| Compress | 448.0, 446.1, 444.5 | 457.9, 449.8, 451.3 |
+| Decompress | 580.3, 577.8, 572.9 | 586.7, 575.3, 573.0 |
+
+Compressing is 1.2% slower best against best, and slower in every round;
+decompressing is the same. GCC was not measured. The APM prefetch of
+pull request #15, 2.8% on the same slice with MSVC, more than repays it.
+
 *Amended in implementation:* codec 5 was first committed with `Mix9`
 behind the transform, and its Windows record then, MSVC 19.51 at
 `1b5fe3c`, logical processor 2, was:
@@ -461,12 +476,15 @@ ways (section 1).
       machine, with the `cpress-bench` row in the commit message.
       *152,011,608 bytes at 364.7 ns a byte (section 4).*
 - [x] Codec 5's tests, its untrusted-input tests among them.
-- [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan: CI on
-      the closing commit is the record.
-- [ ] clang-format clean, clang-tidy clean, no compiler warnings.
+- [x] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan: CI on
+      the closing commit is the record. *Green on `85aaec9`, the last
+      commit to change code.*
+- [x] clang-format clean, clang-tidy clean, no compiler warnings.
+      *Tidy (LLVM 22.1) on Windows; GCC 15 found a warning MSVC and GCC
+      13 did not (`b423cbe`).*
 - [ ] The write-up (the transform's section, the new point, the records),
       the README, `cpress.hpp`, `docs/roadmap.md` and `CLAUDE.md` updated;
-      tag `v1.1`.
+      tag `v1.1`. *All updated; the tag waits for the merge.*
 
 ## Suggested commits
 

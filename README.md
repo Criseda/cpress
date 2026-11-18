@@ -19,7 +19,10 @@ right.
 
 The same engine compresses two kinds of data. Given English text, it is a
 general model in the class of Matt Mahoney's lpaq1: 19.7 MB of `enwik8`,
-the first 100 MB of Wikipedia, a little smaller than lpaq1 itself. Given a
+the first 100 MB of Wikipedia, a little smaller than lpaq1 itself. Told
+what a word is, and given an order-7 table and more memory, the same
+engine makes 18.8 MB of it, and 151.9 MB of the first gigabyte: 8.5% less
+than the byte model, in less time. Given a
 day of NASDAQ's ITCH market feed, it is a model that knows what an order
 is. It keeps every live order the messages describe, names an order by its
 place among its stock's recent orders instead of by its 64-bit number, and
@@ -41,13 +44,13 @@ share the coder and the mixer; only `itch` understands the data.*
 </picture>
 
 *Size against speed on `enwik8`. Filled points were measured on one
-machine in one sitting; hollow ones are the Large Text Compression
-Benchmark's own, timed on other machines.*
+machine, each program alone on one core; hollow ones are the Large Text
+Compression Benchmark's own, timed on other machines.*
 
 | Input | cpress | For comparison | Record |
 |---|---|---|---|
-| `enwik8`, the first 100 MB of English Wikipedia | **19,687,838 bytes**, 1.575 bits a byte (`mix9`) | lpaq1: 19,755,948 bytes, and slower on the same machine | [stage 6](docs/write-up.md#stage-6-the-text-compressors-on-enwik8) |
-| `enwik9`, the first 1 GB | **165,953,692 bytes**, 1.328 bits a byte (`mix9`) | lpaq1: 164,508,919 bytes, on the benchmark | [stage 6](docs/write-up.md#stage-6-enwik9) |
+| `enwik8`, the first 100 MB of English Wikipedia | **18,846,644 bytes**, 1.508 bits a byte (`words`) | `mix9`: 19,687,838. lpaq1: 19,755,948, and slower on the same machine | [stage 7](docs/write-up.md#stage-7-codec-5-words) |
+| `enwik9`, the first 1 GB | **151,906,618 bytes**, 1.215 bits a byte (`words`) | `mix9`: 165,953,692. mcm 0.83: 144,854,575, and faster | [stage 7](docs/write-up.md#stage-7-codec-5-words) |
 | A NASDAQ ITCH day, 8.25 GB, 268,744,780 messages | **3.884 bytes a message** (`itch`) | Every field a column, each `zstd -19`: 8.036. `xz -9`: 9.261 | [stage 5](docs/write-up.md#stage-5-market-data) |
 | Another day, not used in design | **3.843 bytes a message** | The columns: 7.901 | [stage 5](docs/write-up.md#stage-5-market-data) |
 
@@ -55,7 +58,7 @@ Benchmark's own, timed on other machines.*
 what each part is worth, where cpress sits among other compressors, and
 every measurement with the commit that made it.
 
-## Five codecs
+## Six codecs
 
 - `stored` does not compress.
 - `order0`: the arithmetic coder and an order-0 model, stage 1.
@@ -67,6 +70,9 @@ every measurement with the commit that made it.
 - `itch`: the messages of a NASDAQ TotalView-ITCH 5.0 feed, coded against
   the orders they describe, with the same coder and mixer. Stage 5; asked
   for by name.
+- `words`: text with its frequent words replaced by codes from a dictionary
+  of the input's own words, then `mix9`'s model with an order-7 table and
+  four times the memory. Stage 7; asked for by name, `--codec words`.
 
 ## Build
 
@@ -169,6 +175,7 @@ match the header.
 | 2 | `mix6` | One byte, the model's memory level; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.2`) |
 | 3 | `mix9` | As `mix6`, with a level of 10 to 23 (frozen at `v0.3`) |
 | 4 | `itch` | One byte, the model's memory level, 10 to 23; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.5`) |
+| 5 | `words` | One byte, the model's memory level, 10 to 25; the size of the word stream, 8 bytes; then arithmetic-coded bits and 4 flush bytes (experimental until `v1.1`) |
 
 `order0`, `mix6` and `mix9` code each byte most significant bit first. Every bit is
 coded with a 12-bit probability P(bit = 1) from the model, by a carryless
@@ -201,6 +208,17 @@ logarithm of the number of orders the model can hold at once: 12.3 MiB of
 model at level 10, 364 MiB at 23, the smallest level whose table has an
 entry for every 8 bytes of input.
 
+`words` codes a word stream, not the input. The stream is a header naming
+its code bytes and flags, a dictionary of the input's words seen at least
+16 times, one to a line, then the input with each of those words replaced
+by a code of one to three bytes, a flag before a capitalised one, and an
+escape before any byte that would be read as a code or a flag
+([src/text/word_transform.hpp](src/text/word_transform.hpp)). The stream
+is coded as `mix9` codes bytes, with an order-7 table too and levels up to
+25: 4.3 MiB of model at level 10, 4,228.4 MiB at 25. The decoder checks
+every field of the stream as it reads it, and the stream must expand to
+exactly the header's original size.
+
 ## Layout
 
 | Path | Contents |
@@ -210,6 +228,7 @@ entry for every 8 bytes of input.
 | `src/coder/` | Binary arithmetic coder |
 | `src/model/` | The `Predictor` concept, the models and the parts they are built from |
 | `src/itch/` | The ITCH 5.0 schema, the order table and market state, and the message model |
+| `src/text/` | The word transform of codec 5 |
 | `src/codec/` | The drivers that run a model over an input: bit by bit, and message by message |
 | `src/cli/` | The `cpress` tool |
 | `tests/` | Component, golden-archive, round-trip, corruption and mutation tests |
@@ -238,7 +257,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 4 | Large pages, prefetching ahead; same archives | done: same archive, compress 32% faster, decompress 18% (target 25% and 10%) |
 | 5 | Market data: an order-table model for exchange feeds | done, on an ITCH day file: 3.88 bytes per message, 52% under column-split + zstd (target 4.00 or better, and 45%) |
 | 6 | Write-up and release | done: [the write-up](docs/write-up.md); `enwik9` 165,953,692 bytes, and 97,522 for the decompressor |
-| 7 | Text, toward the benchmark's frontier | in progress ([brief](docs/stages/stage-7.md)): `enwik9` under 160,364,392 bytes in all, compressing under 394 ns a byte |
+| 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
 
 ## Documentation
 

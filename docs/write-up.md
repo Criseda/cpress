@@ -5,17 +5,20 @@
 > Matt Mahoney, *Data Compression Explained*, section 1.5 [[1]](#references)
 
 cpress is a lossless compressor written from scratch in C++20, with no
-dependencies. It was built in six stages, each ending in a number. This
+dependencies. It was built in seven stages, each ending in a number. This
 document explains it from the bottom up: what each part does, why it is
 there, and what it is worth, measured. It ends with where cpress sits among
 other compressors.
 
 The project has two results, and the second is the sentence above.
 
-- **Text.** On `enwik8`, the first 100 MB of English Wikipedia, cpress
-  makes 19,687,838 bytes: 1.575 bits a byte. That is the class of Matt
-  Mahoney's lpaq1, and 0.3% smaller than lpaq1 itself
-  [[2]](#references).
+- **Text.** On `enwik8`, the first 100 MB of English Wikipedia, cpress's
+  byte model makes 19,687,838 bytes: 1.575 bits a byte. That is the class
+  of Matt Mahoney's lpaq1, and 0.3% smaller than lpaq1 itself
+  [[2]](#references). Told what a word is, and given an order-7 table
+  and more memory, the same engine makes 18,846,644, and on `enwik9`, the
+  first gigabyte, 151,906,618: 8.5% smaller than the byte model, and
+  faster.
 - **Market data.** On a whole day of the NASDAQ TotalView-ITCH 5.0 feed,
   8.25 GB and 268,744,780 messages, cpress makes 3.884 bytes a message.
   That is 52% smaller than the best a careful engineer gets without a
@@ -48,11 +51,12 @@ machine, and how. Every number about another program cites its source.
 3. [Remembering more than a count](#3-remembering-more-than-a-count)
 4. [Waiting for memory](#4-waiting-for-memory)
 5. [Understanding the data](#5-understanding-the-data)
-6. [Where cpress sits](#6-where-cpress-sits)
-7. [Why it can be trusted](#7-why-it-can-be-trusted)
-8. [What is left](#8-what-is-left)
-9. [Appendix: the measurements](#appendix-the-measurements)
-10. [References](#references)
+6. [Understanding words](#6-understanding-words)
+7. [Where cpress sits](#7-where-cpress-sits)
+8. [Why it can be trusted](#8-why-it-can-be-trusted)
+9. [What is left](#9-what-is-left)
+10. [Appendix: the measurements](#appendix-the-measurements)
+11. [References](#references)
 
 ## 1. Compression is prediction
 
@@ -91,7 +95,7 @@ build it as they go, from nothing. That puts one hard rule on the code.
 The compressor and the decompressor must compute exactly the same
 probability for every bit, on every machine, or the archive is garbage. So
 the model uses no floating point anywhere; every probability and weight is
-a fixed-point integer (section 7).
+a fixed-point integer (section 8).
 
 **The coder** is a binary arithmetic coder with 32 bits of state, after
 the coder of Mahoney's lpaq and paq8 family. It keeps an interval
@@ -403,13 +407,104 @@ slower than `zstd`, because the decoder runs the same model as the
 encoder and does the same work. cpress is an archival tool: a file is
 compressed once and read rarely.
 
-## 6. Where cpress sits
+## 6. Understanding words
+
+`mix9` sees English as bytes. Its word contexts know which word is being
+spelled, but it still spells it: "because" is seven predictions of a
+letter, made again every time the word appears, each a little uncertain.
+The ITCH codec gained most by coding what the bytes mean rather than the
+bytes, and text has an obvious unit of meaning above the byte: the word.
+Codec 5, `words`, codes the frequent words of the input as single tokens,
+and lets `mix9`'s model predict the tokens.
+
+**The transform.** Before the model sees anything, the compressor reads
+the input twice. The first time it counts every word: a run of 2 to 40
+ASCII letters, in lower case, with a capital first letter, or all in
+capitals. Every word seen at least 16 times goes into a dictionary,
+commonest first. The second time it writes a new stream: the dictionary,
+one word to a line, then the text with each dictionary word replaced by a
+code of one, two or three bytes:
+
+| In the text | In the stream |
+|---|---|
+| a dictionary word, as written in the dictionary | its code |
+| the same word with a capital first letter | a flag byte, then its code |
+| the same word in capitals | another flag byte, then its code |
+| any other byte | itself, after an escape byte if it collides with a code or flag |
+
+The 48 commonest words get one-byte codes, the next 3,840 two-byte codes,
+and up to 73,728 more three-byte codes. The code bytes are the 96 byte
+values of 128 or more that the input uses least, chosen per file; the
+flags are the rarest control characters. `mix9`'s word contexts already
+count every byte of 128 or more as a letter, for UTF-8, so a code is a
+word to them too and the word contexts keep working. Within each code
+length the words are sorted alphabetically, which makes the dictionary
+compress well and gives similar words similar codes. The decompressor
+reads the dictionary back from the stream and undoes the rest; the
+dictionary is part of the archive, so nothing about English is built
+into the program.
+
+This is a word-replacing transform, a technique with a literature
+[[8]](#references); on the Large Text Compression Benchmark, Alexander
+Rhatushnyak's `drt` makes lpaq1 4.5% smaller on `enwik8` with a
+dictionary shipped beside the program, and mcm 0.83 builds one from the
+input, as this does [[2]](#references) [[9]](#references).
+
+**What it is worth.** A throwaway prototype measured the choices before
+the codec was written, with `mix9` unchanged behind it; the settings were
+chosen on `enwik8` and only measured on `enwik9`:
+
+| On `enwik8` (`mix9` alone: 19,687,838) | Bytes | Change |
+|---|---|---|
+| The prototype's first settings: words seen 8 times, all 128 high bytes as codes | 19,059,231 | −3.19% |
+| Codec 5's: words seen 16 times, the 96 rarest high bytes | **19,048,520** | **−3.25%** |
+| The first settings, but words seen 4, 32 or 64 times | 19,054,872 to 19,075,923 | about the same |
+| The first settings, but no case flags | 19,209,032 | −2.43% |
+| The first settings, but the dictionary in order of frequency | 19,279,033 | −2.08% |
+| The first settings, but the space before a coded word dropped and its absence flagged | 19,595,338 | −0.47% |
+
+Dropping the space before a word, which shortens the stream most, was the
+worst of them: `mix9` predicts a space after a word almost perfectly, so
+removing it saves little, and the flag for a word with no space before it
+costs much more.
+
+**Why it is also faster.** The transformed `enwik9` is 624 million bytes,
+62% of the input. The model's time is per byte it codes, so it does 38%
+less work, and in the prototype the transform itself cost 14 ns a byte one
+way and 6 the other. A change that makes a context mixer smaller usually makes it
+slower; this one does both.
+
+**The model behind it.** With the stream that much shorter, the model can
+afford more. Codec 5's model, `Mix10`, is `mix9`'s with an order-7 table
+and a largest level of 25, four times the memory, 4,228 MiB: the same
+class, made a template on its number of orders and its largest level, so
+that codec 3's output is untouched. The other additions measured on codec
+5 were not worth their time: a second mixer and a third APM together were
+0.43% smaller on `enwik8` for 17% more time.
+
+**The result,** on Windows with MSVC, every round trip checked:
+
+| | `mix9` (codec 3) | `words` (codec 5) | Change |
+|---|---|---|---|
+| `enwik8` bytes | 19,687,838 | **18,846,644** | −4.27% |
+| `enwik9` bytes | 165,953,692 | **151,906,618** | −8.46% |
+| `enwik9` compress ns/B | 454.2 | **364.7** | −20% |
+| `enwik9` decompress ns/B | 561.4 | **452.5** | −19% |
+| Model memory | 980 MiB | 4,228 MiB | |
+
+The gain grows with the file, as a dictionary's should: the more text, the
+more words recur often enough to be worth a code, and the more often each
+code is used.
+
+## 7. Where cpress sits
 
 Compressors trade size for time, and no single number ranks them. The
-figure puts cpress's two text codecs beside the compressors people use,
-measured on one machine in one sitting, each alone on one pinned
-processor, the fastest of three runs each way, every round trip checked
-(the [appendix](#stage-6-the-text-compressors-on-enwik8) has the commands).
+figure puts cpress's three text codecs beside the compressors people use,
+measured on one machine, each alone on one pinned processor, the fastest
+of three runs each way, every round trip checked. The appendix has the
+commands: stage 6's [sitting](#stage-6-the-text-compressors-on-enwik8),
+and stage 7's for [mcm](#stage-7-mcm-083-on-this-machine) and
+[`words`](#stage-7-codec-5-words).
 The three hollow points are among the strongest programs the Large Text
 Compression Benchmark lists a size of `enwik8` for [[2]](#references), too
 slow to run here: their sizes are exact, their times the benchmark's,
@@ -425,6 +520,8 @@ measured on other machines.
 | cmix v21 † | 14,623,723 | 622,949 | 638,442 |
 | nncp v3.2 † | 14,915,298 | 241,871 | 238,670 |
 | paq8px_v206fix1 † | 15,849,084 | 291,916 | 294,847 |
+| mcm 0.83, `-x11` | 18,234,412 | 377.1 | 373.4 |
+| **cpress `words`** | **18,846,644** | **366.2** | **475.5** |
 | **cpress `mix9`** | **19,687,838** | **454.9** | **575.7** |
 | lpaq1, option 9 | 19,755,948 | 684.0 | 725.3 |
 | bsc 3.4.0 | 20,803,016 | 50.4 | 36.5 |
@@ -440,9 +537,13 @@ measured on other machines.
 
 What the figure says:
 
-- **`mix9` is the smallest program measured here,** and on this machine it
-  is also faster than lpaq1, the program its design follows: it takes a
-  third less time compressing and a fifth less decompressing. That is
+- **mcm 0.83 is the smallest program measured here, and `words` the
+  next.** mcm is 3.2% smaller, 3% slower compressing and 21% faster
+  decompressing. Both are context mixers, and both build a dictionary of
+  words from their input (section 6).
+- **`mix9` is faster than lpaq1,** the program its design follows, on this
+  machine: it takes a third less time compressing and a fifth less
+  decompressing. That is
   stage 4's work. Before it, at `v0.3`, `mix9` ran at 696 and 727 ns a
   byte on this machine (appendix, stage 4), almost exactly lpaq1's speed.
 - **The programs most people use decompress 70 to 360 times faster.**
@@ -451,10 +552,10 @@ What the figure says:
   has to predict every bit again. They pay for it in size: 25 to 36 MB.
 - **bsc** is the strongest trade on the chart: 20.8 MB at 37 to 50 ns a
   byte, by sorting the file so that bytes in similar contexts sit together
-  (the Burrows–Wheeler transform) and coding the result. `mix9` is 5%
-  smaller, at 9 to 16 times the time.
-- **The top of the benchmark** is a fifth to a quarter smaller again, at
-  500 to 1,400 times the time, on machines that are not this one. paq8px
+  (the Burrows–Wheeler transform) and coding the result. `words` is 9%
+  smaller, at 7 to 13 times the time.
+- **The top of the benchmark** is 16% to 22% smaller than `words`, at
+  500 to 1,700 times the time, on machines that are not this one. paq8px
   and cmix mix far more models than cpress, cmix with neural networks
   among them, and nncp predicts with a transformer
   [[2]](#references) [[7]](#references).
@@ -465,24 +566,39 @@ a byte compressing and 561 decompressing. lpaq1 makes 164,508,919
 [[2]](#references): on a file ten times larger, the order is reversed,
 by 0.9%. A model of fixed size would explain it: `mix9`'s 980 MiB of
 tables hold a tenth as much per byte of `enwik9` as of `enwik8`, and lpaq1
-at option 9 has 1.5 GB. The benchmark ranks on the size plus a zip of the
-decompressor, source or executable, whichever is smaller. cpress's
-source, zipped, is 97,522 bytes, which makes 166,051,214 in all.
+at option 9 has 1.5 GB. The order against bsc reverses as well. With a
+block of 1,000 MB, bsc 3.25 sorts all of `enwik9` at once and makes
+163,884,462 bytes, 1.2% under `mix9`, at 23 ns a byte compressing and 8
+decompressing on its tester's machine [[2]](#references): a block that
+grows with the file, against tables that do not.
 
-The order against bsc reverses as well. With a block of 1,000 MB, bsc
-3.25 sorts all of `enwik9` at once and makes 163,884,462 bytes, 1.2%
-under `mix9`, at 23 ns a byte compressing and 8 decompressing on its
-tester's machine [[2]](#references). A block that grows with the file,
-against tables that do not, would explain this reversal too. Of the 238
-programs in the benchmark's table on 17 November 2026, cpress's total
-would place 61st.
+`words` makes **151,906,618 bytes of `enwik9`, 1.215 bits a byte**, at 365
+ns a byte compressing and 453 decompressing. The benchmark ranks on the
+size plus a zip of the decompressor, source or executable, whichever is
+smaller; cpress's source, zipped, is 104,990 bytes, which makes
+**152,011,608** in all (`mix9`'s total was 166,051,214). Of the 238
+programs in the benchmark's table on 17 November 2026, that would place
+43rd, where `mix9` would place 61st.
+
+The benchmark also marks a frontier: a time is underlined when no smaller
+program is faster. No program smaller than `words` in that table
+compresses faster than it, so by the table's own rule it is on the
+compression frontier. Two caveats keep that honest. The table's times
+come from different machines, and the program that sets the frontier
+just above it, mcm 0.83 by Mathieu Chartier, measured on this machine,
+is still 4.6% smaller and faster both ways: 144,854,575 bytes of `enwik9`
+at 334 and 347 ns a byte under WSL [[9]](#references), where `words`
+runs no faster than on Windows (appendix, stage 7). And for decompression mcm
+is the one smaller program that is also faster. mcm too builds a
+dictionary from its input; what else separates the two is the next
+question.
 
 Measured here, lpaq1 and xz make the benchmark's sizes to the byte, and
 bzip2 the size of its row for version 1.0.3. gzip's differs by one byte,
 which the file name gzip keeps in its header would explain: here it was
 `input`. The other programs are newer versions than the benchmark lists.
 
-## 7. Why it can be trusted
+## 8. Why it can be trusted
 
 A compressor that loses data is worse than none. cpress is built so that
 the ways it could go wrong are ruled out by construction, and what cannot
@@ -513,21 +629,26 @@ be ruled out is tested.
   macOS and Windows, and under the address and undefined-behaviour
   sanitizers.
 
-## 8. What is left
+## 9. What is left
 
 The classical design is finished. What the stages measured and left:
 
-- **For text,** an order-7 history table (−0.8% on `enwik8`, for 128 MiB)
-  and a third APM (−0.2%), each a new codec id. Closing the rest of the
-  gap to the top of the benchmark takes what cmix does: neural networks
-  over hundreds of models, at several hundred times the running time
-  [[7]](#references).
+- **For text,** the 4.6% between `words` and mcm 0.83 on `enwik9`, which
+  is a program of the same class at the same speed. A second mixer and a
+  third APM were measured on codec 5 and were not worth their time
+  (−0.43% for 17% more); what mcm does besides its dictionary is the place
+  to look next. Closing the gap to the top of the benchmark takes what
+  cmix does: neural networks over hundreds of models, at several hundred
+  times the running time [[7]](#references).
 - **For market data,** a new order's price against the best price levels
   of its stock (−0.5%), and executions named by their place in a queue at
   each price (at most about half a percent). The timestamps, half the
   archive, are the open question: what is left in them would have to come
   from knowing which messages belong to one event.
-- **For speed,** the arithmetic itself, and threads: a codec that splits
+- **For speed,** the arithmetic itself, which stage 7 profiled: the
+  history tables, the state maps and the two APMs take most of it, and
+  fetching the second APM's next curve early makes compressing 3 to 6%
+  faster without changing a byte (#15). Then threads: a codec that splits
   its input into blocks and codes them at once, each with a model of its
   own, trading compression for speed. For ITCH that trade is poor: an
   order message refers to an order added minutes or hours earlier, which
@@ -852,6 +973,58 @@ The decompressor for the benchmark: `include/` and `src/` as at
 bytes, but it needs the Visual C++ runtime, which Windows does not ship,
 so the source is the smaller decompressor.
 
+### Stage 7: mcm 0.83 on this machine
+
+One sitting on 18 November 2026, WSL 2 (Linux 6.18) on the i9-12900K, GCC
+13.3, every program alone on logical processor 2, every round trip
+checked. `mix9` built from a clean clone at `efe7d14`; mcm from its
+repository at `02b4e7d` [[9]](#references), built by its own `make.sh`
+and run by `bench/text-baselines.sh --mcm PROGRAM --only mcm`. `enwik8`
+the fastest of three runs each way, `enwik9` one.
+
+| | Bytes | Compress ns/B | Decompress ns/B |
+|---|---|---|---|
+| `enwik8`, `mix9` | 19,687,838 | 439.7 | 565.8 |
+| `enwik8`, mcm `-x11` | 18,234,412 | 377.1 | 373.4 |
+| `enwik9`, `mix9` | 165,953,692 | 431.9 | 534.5 |
+| `enwik9`, mcm `-x11` | 144,854,575 | 333.8 | 346.9 |
+
+mcm's `enwik9` is the benchmark's to the byte. Its `enwik8` is 1,117
+bytes over the benchmark's 18,233,295, which the sitting did not explain;
+the benchmark's note says its `-x11` row was built from "optimized source
+with comments removed".
+
+### Stage 7: codec 5, `words`
+
+`cpress-bench --codec words --cpu 2` on Windows 11, MSVC 19.51, the
+i9-12900K, the machine otherwise quiet, 18 November 2026; `enwik8` the
+fastest of three runs each way, `enwik9` one. Built from the tree
+committed as `85aaec9`, before the commit: the program printed
+`b423cbe-dirty`, the commit below it with this change in the working
+tree.
+
+| File | Size (bytes) | Bits/byte | Archive CRC-32 | Compress ns/B | Decompress ns/B | Peak MiB | Large pages MiB |
+|---|---|---|---|---|---|---|---|
+| `enwik8` | 18,846,644 | 1.508 | `c9cce0c7` | 357.8 | 467.3 | 4,505.5 | 4,230.0 |
+| `enwik9` | 151,906,618 | 1.215 | `9bbfbd3c` | 364.7 | 452.5 | 6,887.5 | 4,230.0 |
+
+Peak memory holds the input, the word stream, the archive and the restored
+copy beside the model; compressing `enwik9` alone peaked at 6,098.7 MiB.
+Codec 5's earlier records, on the way: with `mix9`'s model unchanged
+behind the transform (`1b5fe3c`), 19,048,501 and 157,526,731 bytes, at
+324.7 and 412.1 ns a byte on `enwik9`; with the order-7 table at level 24
+(`9346972`), 18,890,270 and 153,908,455, at 366.2 and 458.3.
+
+The decompressor for the benchmark: `include/` and `src/` at `85aaec9`,
+and a note of the one-line build, which now names `src/text/*.cpp`,
+zipped at deflate level 9: 104,990 bytes. Built from those files by the
+note's line for GCC 13.3, it runs. In all, 152,011,608 bytes.
+
+The settings of the transform were chosen on `enwik8` with a throwaway
+prototype and `mix9` behind it; its measurements, and the experiments on
+codec 5 that were not kept, are in the stage 7 brief
+([docs/stages/stage-7.md](stages/stage-7.md), sections 3 and 4).
+
 ## References
 
 1. Matt Mahoney, *Data Compression Explained*, Dell, 2010–2012; last
@@ -870,3 +1043,9 @@ so the source is the smaller decompressor.
    <https://www.nasdaqtrader.com/content/technicalsupport/specifications/dataproducts/NQTVITCHspecification.pdf>.
    The day files: <https://emi.nasdaq.com/ITCH/Nasdaq%20ITCH/>
 7. Byron Knoll, cmix. <https://www.byronknoll.com/cmix.html>
+8. P. Skibiński, Sz. Grabowski and S. Deorowicz, "Revisiting
+   dictionary-based compression", *Software: Practice and Experience*
+   35(15), 1455–1476, 2005. <https://doi.org/10.1002/spe.678>
+9. Mathieu Chartier, mcm, GPL-3.0. <https://github.com/mathieuchartier/mcm>;
+   version 0.83 is commit `02b4e7d`, 5 April 2015, and its dictionary
+   came in the commits of 15 to 29 March 2015 before it.
