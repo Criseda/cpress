@@ -188,8 +188,9 @@ Without it, valid archives of very repetitive input would be rejected.
   - the level byte of codecs 5 and 6;
   - the flagged expansion ceiling, at its extreme and on garbage;
   - the golden archives and checksums of codecs 1 to 5, unchanged.
-- [ ] CI green on MSVC, GCC, Clang and ASan + UBSan.
-- [ ] clang-format and clang-tidy clean, no compiler warnings.
+- [x] CI green on MSVC, GCC, Clang and ASan + UBSan. *Green on `15ef5e1`.*
+- [x] clang-format and clang-tidy clean, no compiler warnings. *Tidy (LLVM
+      22.1) on Windows; GCC 13.3 with `-Werror` under WSL.*
 - [ ] On a quiet machine, on e30, best of several interleaved rounds:
   - codec 6 faster than codec 5 both ways;
   - codecs 3 and 5 no slower than at `v1.1`, since the driver's per-byte
