@@ -390,9 +390,10 @@ it:
 - **The model is `Mix10`.** `mix9`'s class becomes a template on its
   number of orders and its largest level: `Mix9` is `ContextMix<6, 23>`,
   codec 3's, byte for byte as it was (its golden archive still passes),
-  and `Mix10` is `ContextMix<7, 24>`, with an order-7 table and twice the
-  memory at its largest level. On `enwik9` they gave another 2.3% for
-  about 13% more time (section 3), which the exit's time allows.
+  and `Mix10` is `ContextMix<7, 25>`, with an order-7 table and a largest
+  level with four times the memory, 4,228.4 MiB. In the prototype, order
+  7 and level 24 gave another 2.3% on `enwik9` for about 13% more time
+  (section 3), which the exit's time allows; level 25 is below.
 
 *Amended in implementation:* codec 5 was first committed with `Mix9`
 behind the transform, and its Windows record then, MSVC 19.51 at
@@ -406,40 +407,45 @@ behind the transform, and its Windows record then, MSVC 19.51 at
 That already met the exit: about 157.6 MB in all, compressing at 325 ns
 a byte. `Mix10` trades some of that time for size.
 
-**The record,** codec 5 with `Mix10`, MSVC 19.51 on Windows at `9346972`,
+*Amended again:* with `Mix10` at level 24 (`ContextMix<7, 24>`), the
+record at `9346972` was 18,890,270 bytes of `enwik8` at 364.7 and 473.4 ns
+a byte, and 153,908,455 of `enwik9` at 366.2 and 458.3.
+
+**Level 25.** Experiments on that commit, each a throwaway patch,
+codec 5's archive sizes, then the time on `enwik8` under WSL, two rounds:
+
+| Change | Size | Time, compress and decompress |
+|---|---|---|
+| Level 25 | −1.30% on `enwik9`, −0.23% on `enwik8` | +4.2% and +4.2% |
+| A second mixer, its weights chosen by the partial byte | −0.23% on `enwik8` | |
+| A third APM, the partial byte and the last two bytes | −0.18% on `enwik8` | |
+| Both of those | −0.43% on `enwik8` | +17% and +15% |
+| A dictionary with 16 leads of three-byte codes, not 8 | +0.02% on `enwik9` | |
+| A dictionary with no three-byte codes | −0.06% on `enwik8`, +0.47% on `enwik9` | |
+
+Level 25 is the one worth its time, and on Windows, where all 4,230 MiB
+of it is on large pages, it costs none: compared with level 24's record
+above, it is faster.
+
+**The record,** codec 5 with `Mix10` at level 25, MSVC 19.51 on Windows,
 logical processor 2, every round trip checked:
 
 | | Bytes | Compress ns/B | Decompress ns/B | Peak MiB |
 |---|---|---|---|---|
-| `enwik8`, fastest of 3 | 18,890,270 | 364.7 | 473.4 | 2,426 |
-| `enwik9`, one run | **153,908,455** | **366.2** | 458.3 | 4,809 |
+| `enwik8`, fastest of 3 | 18,846,644 | 357.8 | 467.3 | 4,506 |
+| `enwik9`, one run | **151,906,618** | **364.7** | 452.5 | 6,888 |
 
 The decompressor, as the benchmark counts it: `include/` and `src/` at
 that commit with a note of the one-line build, which now names
-`src/text/*.cpp` too, zipped at deflate level 9: 104,640 bytes, checked to
-build with GCC from the note. In all, **154,013,095 bytes**, 12,038,119
-under `v1.0`'s 166,051,214 and 6,351,297 under bsc-m03's 160,364,392,
-compressing at 366 ns a byte against the 394 the table lists for mcm.
-By the table's rule that is the compression frontier. On one machine mcm
-is still 5.9% smaller and faster both ways: 333.8 and 346.9 ns a byte
-under WSL (section 1), where the prototype of this codec took about 358
-and 442 (section 3).
-- **Untrusted input:** every field of the stream is checked as it is
-  read: the number of code bytes, their order, the flags, the code
-  lengths, each dictionary word's letters and length, the number of
-  words, every code, and the size it expands to, which may not pass the
-  original size at any point.
-
-What is already fixed:
-
-- One predictor both ways, integer only, the standard library only, as
-  every codec.
-- The dictionary in an archive is untrusted input: its count, its words'
-  lengths and its codes are checked before anything is built from them,
-  and a corrupt one fails as a corrupt archive does.
-- The archive states its memory, as codecs 3 and 4 do; the decoder
-  allocates what that says, whatever the original size.
-- A golden archive once the codec has shipped, as `docs/style.md` asks.
+`src/text/*.cpp` too, zipped at deflate level 9: 104,990 bytes, checked to
+build with GCC from the note. In all, **152,011,608 bytes**, 14,039,606
+under `v1.0`'s 166,051,214 and 8,352,784 under bsc-m03's 160,364,392,
+compressing at 365 ns a byte against the 394 the table lists for mcm.
+Against the table of 17 November 2026 that is 43rd of 238 programs, from
+61st, and no smaller program in it compresses faster: by the table's
+rule, the compression frontier. One smaller program decompresses faster,
+mcm 0.83, and on one machine it is still 4.6% smaller and faster both
+ways (section 1).
 
 ## Exit criteria
 
@@ -453,7 +459,7 @@ What is already fixed:
 - [x] Codec 5 makes `enwik9` in under 160,364,392 bytes in all, archive
       and decompressor zip, compressing in under 394 ns a byte, on this
       machine, with the `cpress-bench` row in the commit message.
-      *154,013,095 bytes at 366.2 ns a byte (section 4).*
+      *152,011,608 bytes at 364.7 ns a byte (section 4).*
 - [x] Codec 5's tests, its untrusted-input tests among them.
 - [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan: CI on
       the closing commit is the record.

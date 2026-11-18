@@ -54,9 +54,10 @@
 // Two models, one class. ContextMix is a template on the number of byte
 // contexts and the largest level, and everything above is written in terms
 // of them. Mix9 is ContextMix<6, 23>, codec 3's model, frozen at v0.3.
-// Mix10 is ContextMix<7, 24>, codec 5's: an order-7 table as well, so ten
-// predictions, and a largest level with twice the memory, for the word
-// streams of files of a gigabyte (docs/stages/stage-7.md, section 3).
+// Mix10 is ContextMix<7, 25>, codec 5's: an order-7 table as well, so ten
+// predictions, and a largest level with four times the memory, for the
+// word streams of files of a gigabyte (docs/stages/stage-7.md, sections 3
+// and 4).
 //
 // Technique: this is the lpaq class of compressor, after Matt Mahoney's
 // lpaq1 (2007): bit-history states in checked nibble slots, read through
@@ -430,7 +431,7 @@ private:
 
 // Codec 3's model, frozen at v0.3, and codec 5's.
 using Mix9 = ContextMix<6, 23>;
-using Mix10 = ContextMix<7, 24>;
+using Mix10 = ContextMix<7, 25>;
 
 static_assert(Predictor<Mix9> && Predictor<Mix10>);
 // Without this, a hint whose signature drifted would leave the models short

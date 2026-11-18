@@ -153,7 +153,7 @@ void itch_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
 }
 
 // Codec 5: the word transform, then Mix10, mix9's model with an order-7
-// table and a level up to 24, on the stream it writes. The payload is the
+// table and a level up to 25, on the stream it writes. The payload is the
 // model's level for the stream, the stream's size in 8 bytes,
 // little-endian, then the stream as the bitwise driver codes bytes. The
 // level and the size are untrusted, like everything else in it: the level
