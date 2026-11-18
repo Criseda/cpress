@@ -1,8 +1,22 @@
 name: ci
 
+# A push or pull request that changes only documentation builds nothing, so
+# it does not run the matrix: the workflow is skipped when every changed file
+# is Markdown, under docs/ (the figures' script and data among them) or the
+# licence. One file outside those runs everything. No check is required on
+# main; if one ever is, a skipped workflow leaves it waiting, and the filter
+# belongs in the job instead.
 on:
   push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
 
 jobs:
   build-and-test:
