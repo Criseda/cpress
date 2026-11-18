@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(cpress
-    VERSION 0.4.0
+    VERSION 1.0.0
     DESCRIPTION "Context-mixing lossless compressor"
     LANGUAGES CXX)
 

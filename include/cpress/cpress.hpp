@@ -33,11 +33,11 @@
 //               arithmetic-coded bits and 4 flush bytes. The bits code a
 //               sequence of things, each either an ITCH 5.0 message without
 //               its 2-byte length prefix, or one byte that is not part of a
-//               message (docs/stage-5.md). The payload after the level must
-//               be consumed exactly, and the original size may not exceed
-//               33,792 times its size. The decoder allocates what the level
-//               calls for, from 12.3 MiB at 10 to 364 MiB at 23, whatever
-//               the original size. Frozen at v0.5.
+//               message (docs/stages/stage-5.md). The payload after the
+//               level must be consumed exactly, and the original size may
+//               not exceed 33,792 times its size. The decoder allocates what
+//               the level calls for, from 12.3 MiB at 10 to 364 MiB at 23,
+//               whatever the original size. Frozen at v0.5.
 #pragma once
 
 #include <array>

@@ -14,8 +14,8 @@ using model::kMixedCap;
 using model::kRunCap;
 using model::kStateCount;
 
-// The rule of docs/stage-3.md, written out again here so that the table is
-// checked against it rather than against itself.
+// The rule of docs/stages/stage-3.md, written out again here so that the
+// table is checked against it rather than against itself.
 struct Counts {
     std::uint32_t zeros;
     std::uint32_t ones;

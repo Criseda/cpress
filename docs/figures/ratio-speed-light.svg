@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="734" viewBox="0 0 760 734" role="img" aria-labelledby="title desc">
+<title id="title">Where cpress sits: size against speed on enwik8</title>
+<desc id="desc">Compressed size of enwik8 in megabytes against nanoseconds per byte, compressing and decompressing, log scale: mix6 22.5 MB, 356.3 and 392.6 ns/byte; mix9 19.7 MB, 454.9 and 575.7 ns/byte; gzip 36.4 MB, 42.1 and 4.7 ns/byte; bzip2 29.0 MB, 45.4 and 23.4 ns/byte; zstd 25.3 MB, 702.1 and 1.6 ns/byte; xz 24.7 MB, 747.8 and 8.6 ns/byte; brotli 25.7 MB, 1504 and 2 ns/byte; 7-Zip PPMd 21.1 MB, 199.2 and 196.7 ns/byte; bsc 20.8 MB, 50.4 and 36.5 ns/byte; lpaq1 19.8 MB, 684 and 725.3 ns/byte; paq8px 15.8 MB, 291916 and 294847 ns/byte; nncp 14.9 MB, 241871 and 238670 ns/byte; cmix 14.6 MB, 622949 and 638442 ns/byte.</desc>
+<style>text { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .num { font-variant-numeric: tabular-nums; }</style>
+<rect width="760" height="734" rx="8" fill="#fcfcfb"/>
+<text x="24" y="34" font-size="17" fill="#0b0b0b" font-weight="600">Where cpress sits: size against speed on enwik8</text>
+<text x="24" y="56" font-size="13" fill="#52514e">Megabytes against nanoseconds per byte, on a log scale: lower is smaller, left is faster.</text>
+<text x="68" y="94" font-size="13" fill="#0b0b0b" font-weight="600">Compressing</text>
+<line x1="68" y1="106" x2="68" y2="356" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68" y="374" font-size="12" fill="#898781" text-anchor="middle" class="num">1</text>
+<line x1="178" y1="106" x2="178" y2="356" stroke="#e1e0d9" stroke-width="1"/>
+<text x="178" y="374" font-size="12" fill="#898781" text-anchor="middle" class="num">10</text>
+<line x1="288" y1="106" x2="288" y2="356" stroke="#e1e0d9" stroke-width="1"/>
+<text x="288" y="374" font-size="12" fill="#898781" text-anchor="middle" class="num">100</text>
+<line x1="398" y1="106" x2="398" y2="356" stroke="#e1e0d9" stroke-width="1"/>
+<text x="398" y="374" font-size="12" fill="#898781" text-anchor="middle" class="num">1,000</text>
+<line x1="508" y1="106" x2="508" y2="356" stroke="#e1e0d9" stroke-width="1"/>
+<text x="508" y="374" font-size="12" fill="#898781" text-anchor="middle" class="num">10,000</text>
+<line x1="618" y1="106" x2="618" y2="356" stroke="#e1e0d9" stroke-width="1"/>
+<text x="618" y="374" font-size="12" fill="#898781" text-anchor="middle" class="num">100,000</text>
+<line x1="728" y1="106" x2="728" y2="356" stroke="#e1e0d9" stroke-width="1"/>
+<text x="728" y="374" font-size="12" fill="#898781" text-anchor="middle" class="num">1,000,000</text>
+<line x1="68" y1="356" x2="728" y2="356" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="360" font-size="12" fill="#898781" text-anchor="end" class="num">10</text>
+<line x1="68" y1="314.3" x2="728" y2="314.3" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="318.3" font-size="12" fill="#898781" text-anchor="end" class="num">15</text>
+<line x1="68" y1="272.7" x2="728" y2="272.7" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="276.7" font-size="12" fill="#898781" text-anchor="end" class="num">20</text>
+<line x1="68" y1="231" x2="728" y2="231" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="235" font-size="12" fill="#898781" text-anchor="end" class="num">25</text>
+<line x1="68" y1="189.3" x2="728" y2="189.3" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="193.3" font-size="12" fill="#898781" text-anchor="end" class="num">30</text>
+<line x1="68" y1="147.7" x2="728" y2="147.7" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="151.7" font-size="12" fill="#898781" text-anchor="end" class="num">35</text>
+<line x1="68" y1="106" x2="728" y2="106" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="110" font-size="12" fill="#898781" text-anchor="end" class="num">40</text>
+<line x1="68" y1="356" x2="728" y2="356" stroke="#c3c2b7" stroke-width="1"/>
+<circle cx="246.7" cy="135.6" r="5.5" fill="#fcfcfb"/>
+<circle cx="246.7" cy="135.6" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="250.3" cy="197.6" r="5.5" fill="#fcfcfb"/>
+<circle cx="250.3" cy="197.6" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="381.1" cy="228.2" r="5.5" fill="#fcfcfb"/>
+<circle cx="381.1" cy="228.2" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="384.1" cy="233.5" r="5.5" fill="#fcfcfb"/>
+<circle cx="384.1" cy="233.5" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="417.5" cy="224.8" r="5.5" fill="#fcfcfb"/>
+<circle cx="417.5" cy="224.8" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="320.9" cy="263.8" r="5.5" fill="#fcfcfb"/>
+<circle cx="320.9" cy="263.8" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="255.3" cy="266" r="5.5" fill="#fcfcfb"/>
+<circle cx="255.3" cy="266" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="379.9" cy="274.7" r="5.5" fill="#fcfcfb"/>
+<circle cx="379.9" cy="274.7" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="669.2" cy="307.3" r="5.5" fill="#fcfcfb"/>
+<circle cx="669.2" cy="307.3" r="4.5" fill="#fcfcfb" stroke="#898781" stroke-width="2"/>
+<circle cx="660.2" cy="315" r="5.5" fill="#fcfcfb"/>
+<circle cx="660.2" cy="315" r="4.5" fill="#fcfcfb" stroke="#898781" stroke-width="2"/>
+<circle cx="705.4" cy="317.5" r="5.5" fill="#fcfcfb"/>
+<circle cx="705.4" cy="317.5" r="4.5" fill="#fcfcfb" stroke="#898781" stroke-width="2"/>
+<circle cx="348.7" cy="251.6" r="5.5" fill="#fcfcfb"/>
+<circle cx="348.7" cy="251.6" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<circle cx="360.4" cy="275.3" r="5.5" fill="#fcfcfb"/>
+<circle cx="360.4" cy="275.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<text x="255.7" y="139.6" font-size="12" fill="#52514e">gzip</text>
+<text x="259.3" y="201.6" font-size="12" fill="#52514e">bzip2</text>
+<text x="372.1" y="232.2" font-size="12" fill="#52514e" text-anchor="end">zstd</text>
+<text x="393.1" y="237.5" font-size="12" fill="#52514e">xz</text>
+<text x="426.5" y="228.8" font-size="12" fill="#52514e">brotli</text>
+<text x="329.9" y="267.8" font-size="12" fill="#52514e">7-Zip PPMd</text>
+<text x="264.3" y="270" font-size="12" fill="#52514e">bsc</text>
+<text x="388.9" y="278.7" font-size="12" fill="#52514e">lpaq1</text>
+<text x="669.2" y="297.3" font-size="12" fill="#52514e" text-anchor="middle">paq8px</text>
+<text x="651.2" y="319" font-size="12" fill="#52514e" text-anchor="end">nncp</text>
+<text x="705.4" y="307.5" font-size="12" fill="#52514e" text-anchor="middle">cmix</text>
+<text x="357.7" y="255.6" font-size="12" fill="#0b0b0b" font-weight="600">mix6</text>
+<text x="360.4" y="294.3" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">mix9</text>
+<text x="68" y="410" font-size="13" fill="#0b0b0b" font-weight="600">Decompressing</text>
+<line x1="68" y1="422" x2="68" y2="672" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68" y="690" font-size="12" fill="#898781" text-anchor="middle" class="num">1</text>
+<line x1="178" y1="422" x2="178" y2="672" stroke="#e1e0d9" stroke-width="1"/>
+<text x="178" y="690" font-size="12" fill="#898781" text-anchor="middle" class="num">10</text>
+<line x1="288" y1="422" x2="288" y2="672" stroke="#e1e0d9" stroke-width="1"/>
+<text x="288" y="690" font-size="12" fill="#898781" text-anchor="middle" class="num">100</text>
+<line x1="398" y1="422" x2="398" y2="672" stroke="#e1e0d9" stroke-width="1"/>
+<text x="398" y="690" font-size="12" fill="#898781" text-anchor="middle" class="num">1,000</text>
+<line x1="508" y1="422" x2="508" y2="672" stroke="#e1e0d9" stroke-width="1"/>
+<text x="508" y="690" font-size="12" fill="#898781" text-anchor="middle" class="num">10,000</text>
+<line x1="618" y1="422" x2="618" y2="672" stroke="#e1e0d9" stroke-width="1"/>
+<text x="618" y="690" font-size="12" fill="#898781" text-anchor="middle" class="num">100,000</text>
+<line x1="728" y1="422" x2="728" y2="672" stroke="#e1e0d9" stroke-width="1"/>
+<text x="728" y="690" font-size="12" fill="#898781" text-anchor="middle" class="num">1,000,000</text>
+<line x1="68" y1="672" x2="728" y2="672" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="676" font-size="12" fill="#898781" text-anchor="end" class="num">10</text>
+<line x1="68" y1="630.3" x2="728" y2="630.3" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="634.3" font-size="12" fill="#898781" text-anchor="end" class="num">15</text>
+<line x1="68" y1="588.7" x2="728" y2="588.7" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="592.7" font-size="12" fill="#898781" text-anchor="end" class="num">20</text>
+<line x1="68" y1="547" x2="728" y2="547" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="551" font-size="12" fill="#898781" text-anchor="end" class="num">25</text>
+<line x1="68" y1="505.3" x2="728" y2="505.3" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="509.3" font-size="12" fill="#898781" text-anchor="end" class="num">30</text>
+<line x1="68" y1="463.7" x2="728" y2="463.7" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="467.7" font-size="12" fill="#898781" text-anchor="end" class="num">35</text>
+<line x1="68" y1="422" x2="728" y2="422" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="426" font-size="12" fill="#898781" text-anchor="end" class="num">40</text>
+<line x1="68" y1="672" x2="728" y2="672" stroke="#c3c2b7" stroke-width="1"/>
+<circle cx="141.9" cy="451.6" r="5.5" fill="#fcfcfb"/>
+<circle cx="141.9" cy="451.6" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="218.6" cy="513.6" r="5.5" fill="#fcfcfb"/>
+<circle cx="218.6" cy="513.6" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="90.5" cy="544.2" r="5.5" fill="#fcfcfb"/>
+<circle cx="90.5" cy="544.2" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="170.8" cy="549.5" r="5.5" fill="#fcfcfb"/>
+<circle cx="170.8" cy="549.5" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="101.1" cy="540.8" r="5.5" fill="#fcfcfb"/>
+<circle cx="101.1" cy="540.8" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="320.3" cy="579.8" r="5.5" fill="#fcfcfb"/>
+<circle cx="320.3" cy="579.8" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="239.9" cy="582" r="5.5" fill="#fcfcfb"/>
+<circle cx="239.9" cy="582" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="382.7" cy="590.7" r="5.5" fill="#fcfcfb"/>
+<circle cx="382.7" cy="590.7" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="669.7" cy="623.3" r="5.5" fill="#fcfcfb"/>
+<circle cx="669.7" cy="623.3" r="4.5" fill="#fcfcfb" stroke="#898781" stroke-width="2"/>
+<circle cx="659.6" cy="631" r="5.5" fill="#fcfcfb"/>
+<circle cx="659.6" cy="631" r="4.5" fill="#fcfcfb" stroke="#898781" stroke-width="2"/>
+<circle cx="706.6" cy="633.5" r="5.5" fill="#fcfcfb"/>
+<circle cx="706.6" cy="633.5" r="4.5" fill="#fcfcfb" stroke="#898781" stroke-width="2"/>
+<circle cx="353.3" cy="567.6" r="5.5" fill="#fcfcfb"/>
+<circle cx="353.3" cy="567.6" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<circle cx="371.6" cy="591.3" r="5.5" fill="#fcfcfb"/>
+<circle cx="371.6" cy="591.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<text x="150.9" y="455.6" font-size="12" fill="#52514e">gzip</text>
+<text x="227.6" y="517.6" font-size="12" fill="#52514e">bzip2</text>
+<text x="90.5" y="563.2" font-size="12" fill="#52514e" text-anchor="middle">zstd</text>
+<text x="179.8" y="553.5" font-size="12" fill="#52514e">xz</text>
+<text x="110.1" y="544.8" font-size="12" fill="#52514e">brotli</text>
+<text x="320.3" y="598.8" font-size="12" fill="#52514e" text-anchor="middle">7-Zip PPMd</text>
+<text x="248.9" y="586" font-size="12" fill="#52514e">bsc</text>
+<text x="391.7" y="594.7" font-size="12" fill="#52514e">lpaq1</text>
+<text x="669.7" y="613.3" font-size="12" fill="#52514e" text-anchor="middle">paq8px</text>
+<text x="650.6" y="635" font-size="12" fill="#52514e" text-anchor="end">nncp</text>
+<text x="706.6" y="623.5" font-size="12" fill="#52514e" text-anchor="middle">cmix</text>
+<text x="362.3" y="571.6" font-size="12" fill="#0b0b0b" font-weight="600">mix6</text>
+<text x="371.6" y="610.3" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">mix9</text>
+<text x="68" y="716" font-size="12" fill="#898781">Filled: measured on one machine in one sitting. Hollow: the benchmark's own, timed on its machines.</text>
+</svg>

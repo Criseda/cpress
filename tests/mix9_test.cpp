@@ -32,7 +32,7 @@ static_assert(Mix9::level_for_size(1025) == 11);
 static_assert(Mix9::level_for_size(std::uint64_t{1} << 23) == 23);
 static_assert(Mix9::level_for_size(std::uint64_t{1} << 40) == Mix9::kMaxLevel);
 
-// memory_bytes: the table in docs/stage-3.md, section 7.
+// memory_bytes: the table in docs/stages/stage-3.md, section 7.
 static_assert(Mix9::memory_bytes(10) == 4'534'656);
 static_assert(Mix9::memory_bytes(16) == 13'166'976);
 static_assert(Mix9::memory_bytes(20) == 140'962'176);

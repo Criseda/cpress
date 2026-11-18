@@ -1,0 +1,7 @@
+# enwik8 (100,000,000 bytes) after each stage's codec. From the README's
+# results table: order0 at v0.1, mix6 at v0.2, mix9 at v0.3.
+label,cpress,bytes
+"enwik8, as it is",no,100000000
+"Stage 1: order0, one context",yes,61263585
+"Stage 2: mix6, six contexts mixed",yes,22527170
+"Stage 3: mix9, bit histories and a match model",yes,19687838

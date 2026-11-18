@@ -14,16 +14,18 @@ the current stage before implementing anything. Both are binding.
 
 | Document | Contents |
 |---|---|
-| `README.md` | Build, usage, archive format, roadmap summary |
+| `README.md` | The quote, headline results, build, usage, archive format, roadmap summary |
+| `docs/write-up.md` | How cpress works, what each part is worth, every measurement |
 | `docs/idea.md` | Why the project exists; goals and non-goals |
 | `docs/roadmap.md` | Every stage, with exit criteria |
-| `docs/stage-N.md` | The brief for stage N |
+| `docs/stages/stage-N.md` | The brief for stage N |
 | `docs/style.md` | Code style and review checklist |
 
 ## Where things stand
 
-Stages 0 to 5 are done and tagged (`v0.1` to `v0.5`); codecs 1 to 4 are
-frozen. Stage 6, the release, is next and has no brief yet.
+Stages 0 to 6 are done and tagged (`v0.1` to `v0.5`, then `v1.0`); codecs
+1 to 4 are frozen. The roadmap is finished; what comes next is in its
+"After 1.0", and needs a brief of its own.
 Update this line and the README roadmap when a stage is tagged.
 Stage targets are sizes on `corpus/enwik8` (100 MB), and stage 5's on an ITCH
 day file (8.25 GB); see `corpus/README.md`.

@@ -42,7 +42,7 @@
 // the component files say what each takes from it. Coding a number as a
 // length and then its bytes, each in the context of the bytes above it, is
 // ordinary for structured data; the form here was chosen by measurement
-// (docs/stage-5.md).
+// (docs/stages/stage-5.md).
 #pragma once
 
 #include "codec/two_way.hpp"

@@ -1,0 +1,12 @@
+# The first 30,000,000 messages of 12302019.NASDAQ_ITCH50, 951,200,923 bytes,
+# cut with cpress-columns --head (corpus/README.md). From the README's stage 5
+# speed table: itch is cpress-bench --codec itch at 5d2958d; the others are
+# bench/baselines.sh at 16224b8, mix9 built with GCC 13.3.
+compressor,cpress,bytes,messages
+cpress itch,yes,118013377,30000000
+"columns, each zstd -19 (the fair baseline)",no,241223312,30000000
+cpress mix9,yes,243566729,30000000
+xz -9,no,275980244,30000000
+zstd --ultra -22,no,304533474,30000000
+zstd -19,no,306219590,30000000
+gzip -9,no,385060713,30000000

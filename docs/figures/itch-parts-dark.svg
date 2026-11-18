@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img" aria-labelledby="title desc">
+<title id="title">What each part of the ITCH model is worth</title>
+<desc id="desc">Bytes per message of the ITCH model as parts are added: Every field in its contexts, every value as it is 6.967; + differences against the last 4.551; + the order table 3.905; + a new order's price as it is 3.875; + smaller history tables: the design 3.884.</desc>
+<style>text { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .num { font-variant-numeric: tabular-nums; }</style>
+<rect width="760" height="300" rx="8" fill="#1a1a19"/>
+<text x="24" y="34" font-size="17" fill="#f0efec" font-weight="600">What each part of the ITCH model is worth</text>
+<text x="24" y="56" font-size="13" fill="#c3c2b7">A whole trading day, 268,744,780 messages; each row adds one thing to the row above.</text>
+<line x1="392.8" y1="78" x2="392.8" y2="244" stroke="#2c2c2a" stroke-width="1"/>
+<text x="392.8" y="262" font-size="12" fill="#898781" text-anchor="middle" class="num">0</text>
+<line x1="435" y1="78" x2="435" y2="244" stroke="#2c2c2a" stroke-width="1"/>
+<text x="435" y="262" font-size="12" fill="#898781" text-anchor="middle" class="num">1</text>
+<line x1="477.1" y1="78" x2="477.1" y2="244" stroke="#2c2c2a" stroke-width="1"/>
+<text x="477.1" y="262" font-size="12" fill="#898781" text-anchor="middle" class="num">2</text>
+<line x1="519.3" y1="78" x2="519.3" y2="244" stroke="#2c2c2a" stroke-width="1"/>
+<text x="519.3" y="262" font-size="12" fill="#898781" text-anchor="middle" class="num">3</text>
+<line x1="561.5" y1="78" x2="561.5" y2="244" stroke="#2c2c2a" stroke-width="1"/>
+<text x="561.5" y="262" font-size="12" fill="#898781" text-anchor="middle" class="num">4</text>
+<line x1="603.7" y1="78" x2="603.7" y2="244" stroke="#2c2c2a" stroke-width="1"/>
+<text x="603.7" y="262" font-size="12" fill="#898781" text-anchor="middle" class="num">5</text>
+<line x1="645.8" y1="78" x2="645.8" y2="244" stroke="#2c2c2a" stroke-width="1"/>
+<text x="645.8" y="262" font-size="12" fill="#898781" text-anchor="middle" class="num">6</text>
+<line x1="688" y1="78" x2="688" y2="244" stroke="#2c2c2a" stroke-width="1"/>
+<text x="688" y="262" font-size="12" fill="#898781" text-anchor="middle" class="num">7</text>
+<text x="392.8" y="282" font-size="12" fill="#898781">bytes per message</text>
+<text x="380.8" y="104.5" font-size="13" fill="#c3c2b7" text-anchor="end">Every field in its contexts, every value as it is</text>
+<path d="M392.8 90H682.6A4 4 0 0 1 686.6 94V106A4 4 0 0 1 682.6 110H392.8Z" fill="#898781"/>
+<text x="694.6" y="104.5" font-size="13" fill="#c3c2b7" class="num">6.967</text>
+<text x="380.8" y="136.5" font-size="13" fill="#c3c2b7" text-anchor="end">+ differences against the last</text>
+<path d="M392.8 122H580.7A4 4 0 0 1 584.7 126V138A4 4 0 0 1 580.7 142H392.8Z" fill="#898781"/>
+<text x="592.7" y="136.5" font-size="13" fill="#c3c2b7" class="num">4.551</text>
+<text x="380.8" y="168.5" font-size="13" fill="#c3c2b7" text-anchor="end">+ the order table</text>
+<path d="M392.8 154H553.5A4 4 0 0 1 557.5 158V170A4 4 0 0 1 553.5 174H392.8Z" fill="#898781"/>
+<text x="565.5" y="168.5" font-size="13" fill="#c3c2b7" class="num">3.905</text>
+<text x="380.8" y="200.5" font-size="13" fill="#c3c2b7" text-anchor="end">+ a new order's price as it is</text>
+<path d="M392.8 186H552.2A4 4 0 0 1 556.2 190V202A4 4 0 0 1 552.2 206H392.8Z" fill="#898781"/>
+<text x="564.2" y="200.5" font-size="13" fill="#c3c2b7" class="num">3.875</text>
+<text x="380.8" y="232.5" font-size="13" fill="#c3c2b7" text-anchor="end">+ smaller history tables: the design</text>
+<path d="M392.8 218H552.6A4 4 0 0 1 556.6 222V234A4 4 0 0 1 552.6 238H392.8Z" fill="#3987e5"/>
+<text x="564.6" y="232.5" font-size="13" fill="#f0efec" font-weight="600" class="num">3.884</text>
+<line x1="392.8" y1="78" x2="392.8" y2="244" stroke="#383835" stroke-width="1"/>
+</svg>

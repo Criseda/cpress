@@ -21,8 +21,8 @@
 //   the rest    tracking number, timestamp, then the type's own fields
 //
 // Every field is coded through the FieldCoder as a residual (residual.hpp)
-// against an expectation, with four contexts. Section 5 of docs/stage-5.md
-// has the table of them; the code below is that table.
+// against an expectation, with four contexts. Section 5 of
+// docs/stages/stage-5.md has the table of them; the code below is that table.
 //
 // One function, both directions. Every coding function here is a template
 // over the coder (codec/two_way.hpp) and written once: it reads a field

@@ -15,6 +15,16 @@ Unzip the files into this folder, then run:
 cpress-bench corpus/enwik8
 ```
 
+## enwik9
+
+| | Bytes | |
+|---|---|---|
+| `enwik9.zip` | 322,592,222 | MD5 `3e773f8a1577fda2e27f871ca17f31fd` |
+| `enwik9` | 1,000,000,000 | MD5 `e206c3450ac99950df65bf70ef61a12d`, as the benchmark lists it |
+
+Downloaded on 17 November 2026. `cpress-bench` holds the file, its archive
+and the restored copy at once, about 3 GiB with `mix9`'s model.
+
 ## The ITCH day file
 
 | | Bytes | |
@@ -77,3 +87,21 @@ the jobs share the caches and memory, so take speeds from a run with
 `--jobs 1`, on a slice: the README's are from the first 30,000,000
 messages. A baseline's size does not change with cpress's code, so it is
 measured once per file and tool version, not once per commit.
+
+## The text baselines
+
+```
+bench/text-baselines.sh --cpu 2 --repeat 3 --bsc BSC --lpaq1 LPAQ1 FILE
+```
+
+times gzip, bzip2, zstd, xz, brotli, 7-Zip's PPMd, and, given their
+programs, bsc and lpaq1 on one file, each alone on one pinned processor,
+at the options the Large Text Compression Benchmark lists for it, and
+checks every round trip. It needs Linux (WSL will do), GNU time, and
+gzip, bzip2, zstd, xz, brotli and 7-Zip (`7z`) installed. bsc is
+<https://github.com/IlyaGrebnov/libbsc>; lpaq1 is
+<https://mattmahoney.net/dc/lpaq1.zip>, one file of C++. Build both
+outside the repository. Put FILE on the Linux side's own disk: a file
+under `/mnt/c` is read through a slow mount, and the time is the mount's.
+On `enwik8` the eight programs took 25 minutes at `--repeat 3`. The
+write-up's figures are drawn from the result by `docs/figures/draw.py`.

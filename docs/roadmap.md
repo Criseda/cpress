@@ -14,11 +14,11 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | 3 | lpaq-class model | 20 MB or better (19.7 MB) | done |
 | 4 | Performance | same archive; compress 25%, decompress 10% faster (32%, 18%) | done |
 | 5 | Market data | 4.00 bytes per message or better; 45% under column-split + zstd (3.88; 52%) | done |
-| 6 | Release | write-up published | 2 weeks |
+| 6 | Release | write-up published ([write-up.md](write-up.md)) | done |
 
 ## How stages run
 
-1. A brief is written for the stage (`docs/stage-N.md`): components,
+1. A brief is written for the stage (`docs/stages/stage-N.md`): components,
    interfaces, invariants, tests, exit criteria, and what is out of scope.
 2. The stage is implemented against the brief in small commits.
 3. The stage is reviewed against the checklist in `docs/style.md`.
@@ -38,7 +38,7 @@ file. The only codec is `stored`.
 
 ## Stage 1: arithmetic coder and order-0 model (done)
 
-Brief: [stage-1.md](stage-1.md).
+Brief: [stage-1.md](stages/stage-1.md).
 
 - A binary arithmetic coder driven by a 12-bit probability.
 - The `Predictor` concept: the compile-time interface every model implements.
@@ -49,7 +49,7 @@ Brief: [stage-1.md](stage-1.md).
 
 ## Stage 2: context mixing (done)
 
-Brief: [stage-2.md](stage-2.md).
+Brief: [stage-2.md](stages/stage-2.md).
 
 - **Hashed context models** for orders 1 to 6: the last *n* bytes are hashed
   to a slot holding adaptive probabilities for the bits of the next byte.
@@ -67,7 +67,7 @@ chosen by the previous byte; a fixed learning rate.
 
 ## Stage 3: lpaq-class model (done)
 
-Brief: [stage-3.md](stage-3.md).
+Brief: [stage-3.md](stages/stage-3.md).
 
 - **Bit-history states:** each context slot holds a small state summarising
   the recent bits seen there, instead of a single probability. The state
@@ -90,7 +90,7 @@ measured 19.69 MB.
 
 ## Stage 4: performance (done)
 
-Brief: [stage-4.md](stage-4.md).
+Brief: [stage-4.md](stages/stage-4.md).
 
 The same model, faster, with codec 3's archives unchanged byte for byte.
 
@@ -114,7 +114,7 @@ stage 6.
 
 ## Stage 5: market data (done)
 
-Brief: [stage-5.md](stage-5.md).
+Brief: [stage-5.md](stages/stage-5.md).
 
 One day of the NASDAQ TotalView-ITCH 5.0 feed: 268,744,780 messages,
 8.25 GB. Three parts, each useful alone.
@@ -161,15 +161,19 @@ fraction of any baseline's speed; that is part of the result. The
 listing. Blocks and threads, which issue #4 left to this stage, stay out:
 an order message depends on an order added hours before.
 
-## Stage 6: release
+## Stage 6: release (done)
+
+Brief: [stage-6.md](stages/stage-6.md).
 
 - The write-up: design, the ratio-against-speed plot and the script that
   draws it, an ablation table showing what each component is worth, and the
   market-data result.
-- Submission to the Large Text Compression Benchmark (`enwik9`; the
-  decompressor's size counts towards the total).
+- `enwik9` measured for the Large Text Compression Benchmark, with the
+  decompressor's size, which counts towards the total. The submission is
+  drafted, and sent after 1.0, when the owner is content with cpress's
+  performance.
 - Golden archives for every frozen codec.
-- A licence, chosen before the repository is made public.
+- The licence, Apache-2.0, added before the repository is made public.
 - Tag `v1.0`.
 
 ## After 1.0
@@ -182,6 +186,10 @@ Only if the classical design is finished and written up:
 - Speed beyond stage 4: the computation, a block-parallel codec, and the
   rest measured in issue #4.
 - Decoder fuzzing as a permanent CI job.
+
+Whatever comes of these, the submission to the Large Text Compression
+Benchmark that stage 6 drafted is sent when the owner is content with
+cpress's performance on `enwik9`.
 
 ## Standing engineering work
 

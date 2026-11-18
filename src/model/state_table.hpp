@@ -132,7 +132,7 @@ inline constexpr GeneratedStates kGeneratedStates = generate_states();
 
 // The number of states the rule produces.
 inline constexpr int kStateCount = static_cast<int>(detail::kGeneratedStates.size);
-static_assert(kStateCount == 181, "the rule and caps of docs/stage-3.md give 181 states");
+static_assert(kStateCount == 181, "the rule and caps of docs/stages/stage-3.md give 181 states");
 static_assert(kStateCount <= static_cast<int>(detail::kMaxStates), "a state fits a byte");
 static_assert(detail::kGeneratedStates.counts[0] == detail::BitCounts{},
               "state 0 is (0, 0), so a zeroed slot holds fresh states");

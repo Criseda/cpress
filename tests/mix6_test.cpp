@@ -28,7 +28,7 @@ static_assert(Mix6::level_for_size(1025) == 11);
 static_assert(Mix6::level_for_size(std::uint64_t{1} << 22) == 22);
 static_assert(Mix6::level_for_size(std::uint64_t{1} << 40) == Mix6::kMaxLevel);
 
-// memory_bytes: the table in docs/stage-2.md.
+// memory_bytes: the table in docs/stages/stage-2.md.
 constexpr std::uint64_t kKiB = 1024;
 constexpr std::uint64_t kMiB = 1024 * kKiB;
 static_assert(Mix6::memory_bytes(10) == 192 * kKiB);
