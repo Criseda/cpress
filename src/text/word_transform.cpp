@@ -355,8 +355,12 @@ Bytes forward(ByteView input) {
         code_of.emplace(words[i], static_cast<std::uint32_t>(i));
     }
 
+    // Not reserved ahead. With a reserve() here, GCC 15 warns that the
+    // push_back() after it frees a pointer operator new did not return
+    // (-Wfree-nonheap-object), which is not so, and warnings are errors in
+    // CI. Growing by doubling instead costs a fraction of a second on a
+    // gigabyte.
     Bytes out;
-    out.reserve(input.size() + (input.size() / 8));
     out.push_back(static_cast<std::uint8_t>(layout.k() - 1));
     out.insert(out.end(), layout.codes().begin(), layout.codes().end());
     out.push_back(layout.escape());
