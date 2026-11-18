@@ -405,6 +405,25 @@ behind the transform, and its Windows record then, MSVC 19.51 at
 
 That already met the exit: about 157.6 MB in all, compressing at 325 ns
 a byte. `Mix10` trades some of that time for size.
+
+**The record,** codec 5 with `Mix10`, MSVC 19.51 on Windows at `9346972`,
+logical processor 2, every round trip checked:
+
+| | Bytes | Compress ns/B | Decompress ns/B | Peak MiB |
+|---|---|---|---|---|
+| `enwik8`, fastest of 3 | 18,890,270 | 364.7 | 473.4 | 2,426 |
+| `enwik9`, one run | **153,908,455** | **366.2** | 458.3 | 4,809 |
+
+The decompressor, as the benchmark counts it: `include/` and `src/` at
+that commit with a note of the one-line build, which now names
+`src/text/*.cpp` too, zipped at deflate level 9: 104,640 bytes, checked to
+build with GCC from the note. In all, **154,013,095 bytes**, 12,038,119
+under `v1.0`'s 166,051,214 and 6,351,297 under bsc-m03's 160,364,392,
+compressing at 366 ns a byte against the 394 the table lists for mcm.
+By the table's rule that is the compression frontier. On one machine mcm
+is still 5.9% smaller and faster both ways: 333.8 and 346.9 ns a byte
+under WSL (section 1), where the prototype of this codec took about 358
+and 442 (section 3).
 - **Untrusted input:** every field of the stream is checked as it is
   read: the number of code bytes, their order, the flags, the code
   lengths, each dictionary word's letters and length, the number of
@@ -431,10 +450,11 @@ What is already fixed:
 - [x] 7b: the profile's table, both ways, in section 2 and issue #4.
 - [x] 7c: the prototype's measurements, and codec 5's design, in this
       brief.
-- [ ] Codec 5 makes `enwik9` in under 160,364,392 bytes in all, archive
+- [x] Codec 5 makes `enwik9` in under 160,364,392 bytes in all, archive
       and decompressor zip, compressing in under 394 ns a byte, on this
       machine, with the `cpress-bench` row in the commit message.
-- [ ] Codec 5's tests, its untrusted-input tests among them.
+      *154,013,095 bytes at 366.2 ns a byte (section 4).*
+- [x] Codec 5's tests, its untrusted-input tests among them.
 - [ ] All tests pass on MSVC, GCC and Clang, and under ASan + UBSan: CI on
       the closing commit is the record.
 - [ ] clang-format clean, clang-tidy clean, no compiler warnings.
