@@ -39,21 +39,26 @@ concept Predictor = requires(P& p, int bit) {
     { p.update(bit) } noexcept -> std::same_as<void>;
 };
 
-// A Predictor that can be told, at each byte boundary, what is likely to
-// come, so that it can start fetching the memory that coding it will touch.
+// A Predictor that can be told what is likely to come, so that it can start
+// fetching the memory that coding it will touch.
 //
-//   prefetch_after(byte, next)  `byte` is the byte about to be coded and
-//                               `next` the one after it, both known.
-//   prefetch_from_match()       the bytes are not known; guess them.
+//   prefetch_after(byte, next)  at a byte boundary: `byte` is the byte about
+//                               to be coded and `next` the one after it,
+//                               both known.
+//   prefetch_from_match()       at a byte boundary: the bytes are not known;
+//                               guess them.
+//   prefetch_decoded(bits)      after a decoded bit: `bits` of the byte, 1
+//                               to 8, are known, and the rest are not.
 //
-// The contract: both are hints. They change nothing that predict() or
+// The contract: all three are hints. They change nothing that predict() or
 // update() will do, so a predictor given every hint and one given none
-// predict identically. Both are noexcept and allocation-free, like the
+// predict identically. All are noexcept and allocation-free, like the
 // per-bit calls.
 template <typename P>
-concept Prefetching = Predictor<P> && requires(P& p, std::uint32_t byte) {
+concept Prefetching = Predictor<P> && requires(P& p, std::uint32_t byte, int bits) {
     { p.prefetch_after(byte, byte) } noexcept;
     { p.prefetch_from_match() } noexcept;
+    { p.prefetch_decoded(bits) } noexcept;
 };
 
 }  // namespace cpress::model

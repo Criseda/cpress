@@ -10,6 +10,8 @@
 // place in both loops: the encoder, which has the input, gives it the byte
 // and the one after; the decoder, which has not decoded them yet, asks it to
 // guess. That is why compressing is the faster direction for such a model.
+// The decoder also says, after each bit, how much of the byte it knows,
+// which narrows what the model must fetch; the encoder knew it all along.
 //
 // Each comes in two forms. One takes a predictor the caller has constructed,
 // for models that need arguments; it must be fresh, never used before. The
@@ -149,6 +151,7 @@ void decode_bitwise(P& predictor, ByteView payload, std::uint64_t original_size,
         for (int bit_index = 0; bit_index < 8; ++bit_index) {
             const int bit = decoder.decode(predictor.predict());
             predictor.update(bit);
+            if constexpr (model::Prefetching<P>) predictor.prefetch_decoded(bit_index + 1);
             byte = (byte * 2) + bit;
         }
         if (decoder.overrun()) {

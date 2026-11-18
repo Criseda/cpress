@@ -189,8 +189,9 @@ std::array<cpress::Bytes, 2> hint_inputs() {
     return {sample_text(8192), random_bytes(8192, 41)};
 }
 
-// Hints change nothing. A model given both hints before every byte, the
-// encoder's with the true bytes, predicts exactly as one given none.
+// Hints change nothing. A model given both byte hints before every byte, the
+// encoder's with the true bytes, and the decoder's after every bit,
+// predicts exactly as one given none.
 void test_hints_change_no_prediction() {
     for (const cpress::Bytes& data : hint_inputs()) {
         Mix9 hinted(Mix9::kMinLevel);
@@ -199,7 +200,8 @@ void test_hints_change_no_prediction() {
             if (i + 1 < data.size()) hinted.prefetch_after(data[i], data[i + 1]);
             hinted.prefetch_from_match();
         };
-        CHECK(predictions(hinted, data, give_hints) == predictions(plain, data));
+        const auto give_bit_hints = [&](int bits) { hinted.prefetch_decoded(bits); };
+        CHECK(predictions(hinted, data, give_hints, give_bit_hints) == predictions(plain, data));
     }
 }
 
@@ -252,6 +254,44 @@ void test_prefetched_keys_are_the_keys_used() {
     }
 }
 
+// Whether two byte contexts are the same: the word keys follow from the
+// words.
+bool same_context(const Mix9::ByteContext& a, const Mix9::ByteContext& b) {
+    return a.history == b.history && a.words.word == b.words.word &&
+           a.words.previous == b.words.previous;
+}
+
+// The decoder's candidates include what is used. After the bits
+// prefetch_decoded() waits for, the candidate the byte's next bit picks
+// is, for the second nibble, the slot every table selects, and, for the
+// next byte, the context the model is in when it starts.
+void test_decoded_candidates_are_the_keys_used() {
+    static_assert(Mix9::kSecondNibbleBits < 4 && Mix9::kNextByteBits < 8);
+    for (const cpress::Bytes& data : hint_inputs()) {
+        Mix9 model(Mix9::kMinLevel);
+        bool second_nibbles = true;
+        bool next_bytes = true;
+        for (const std::uint8_t byte : data) {
+            std::array<std::array<std::uint64_t, Mix9::kTables>, 2> nibbles{};
+            std::array<Mix9::ByteContext, 2> contexts{};
+            for (int bits = 1; bits <= 8; ++bits) {
+                static_cast<void>(model.predict());
+                model.update((byte >> (8 - bits)) & 1);
+                if (bits == Mix9::kSecondNibbleBits) nibbles = model.second_nibble_candidates();
+                if (bits == Mix9::kNextByteBits) contexts = model.next_byte_candidates();
+                if (bits == 4) {  // the second nibble's slots are selected now
+                    const auto last_bit = static_cast<std::size_t>((byte >> 4) & 1);
+                    second_nibbles = second_nibbles && selects(model, nibbles.at(last_bit));
+                }
+            }
+            const auto last_bit = static_cast<std::size_t>(byte & 1);
+            next_bytes = next_bytes && same_context(contexts.at(last_bit), model.context());
+        }
+        CHECK(second_nibbles);
+        CHECK(next_bytes);
+    }
+}
+
 }  // namespace
 
 void run_mix9_tests() {
@@ -261,6 +301,7 @@ void run_mix9_tests() {
     test_next_words_matches_stage_3();
     test_hints_change_no_prediction();
     test_prefetched_keys_are_the_keys_used();
+    test_decoded_candidates_are_the_keys_used();
 }
 
 }  // namespace cpress::test

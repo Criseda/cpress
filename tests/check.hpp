@@ -73,10 +73,11 @@ inline cpress::Bytes sample_text(std::size_t count) {
 
 // The prediction at every bit of `data`, coded through `model` most
 // significant bit first, as the bitwise driver codes it. `before_byte(i)` is
-// called before byte i, where the driver gives its hints.
-template <typename Model, typename BeforeByte>
-std::vector<std::uint32_t> predictions(Model& model, cpress::ByteView data,
-                                       BeforeByte before_byte) {
+// called before byte i and `after_bit(k)` after the kth bit of each byte,
+// 1 to 8, where the driver gives its hints.
+template <typename Model, typename BeforeByte, typename AfterBit>
+std::vector<std::uint32_t> predictions(Model& model, cpress::ByteView data, BeforeByte before_byte,
+                                       AfterBit after_bit) {
     std::vector<std::uint32_t> p12s;
     p12s.reserve(data.size() * 8);
     for (std::size_t i = 0; i < data.size(); ++i) {
@@ -84,9 +85,16 @@ std::vector<std::uint32_t> predictions(Model& model, cpress::ByteView data,
         for (int shift = 7; shift >= 0; --shift) {
             p12s.push_back(model.predict());
             model.update((data[i] >> shift) & 1);
+            after_bit(8 - shift);
         }
     }
     return p12s;
+}
+
+template <typename Model, typename BeforeByte>
+std::vector<std::uint32_t> predictions(Model& model, cpress::ByteView data,
+                                       BeforeByte before_byte) {
+    return predictions(model, data, before_byte, [](int /*bits*/) {});
 }
 
 template <typename Model>
