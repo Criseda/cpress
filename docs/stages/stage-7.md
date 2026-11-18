@@ -173,13 +173,17 @@ cpress.
 
 **The script.** `bench/text-baselines.sh` gains `--mcm PROGRAM`, as it has
 `--bsc` and `--lpaq1`: mcm 0.83 at `-x11`, which the benchmark lists at
-5,961 MB of memory.
+5,961 MB of memory. It also gains `--only NAMES`, to run some of its
+programs and not all: the six it always runs would add about an hour of
+compressing to an `enwik9` sitting, for rows stage 6 already has on
+`enwik8`.
 
 **The sitting.** On a quiet machine, every program on logical processor
 2:
 
 - `enwik8`: `cpress-bench --cpu 2 --repeat 3` for `mix9`, built in WSL at
-  this brief's commit, and `text-baselines.sh --mcm ... --repeat 3`;
+  this brief's commit, and `text-baselines.sh --mcm PROGRAM --only mcm
+  --repeat 3`;
 - `enwik9`: the same, at `--repeat 1`.
 
 The scratch directory is `/dev/shm`, which is memory, so that no file is
@@ -189,6 +193,39 @@ WSL's 15 GB.
 
 **What it records.** The rows go into the commit message and into this
 section. 7a changes no codec.
+
+**Results,** 18 November 2026, WSL 2 (Linux 6.18) on the i9-12900K, GCC
+13.3, logical processor 2, every round trip checked; `mix9` at `efe7d14`
+from a clean clone, mcm built by its `make.sh`:
+
+| | Bytes | Compress ns/B | Decompress ns/B | Peak MiB, each way |
+|---|---|---|---|---|
+| `enwik8`, `mix9` | 19,687,838 | 439.7 | 565.8 | 1,100 / 1,196 |
+| `enwik8`, mcm `-x11` | 18,234,412 | 377.1 | 373.4 | 5,769 / 5,666 |
+| `enwik9`, `mix9` | 165,953,692 | 431.9 | 534.5 | 2,098 / 3,051 |
+| `enwik9`, mcm `-x11` | 144,854,575 | 333.8 | 346.9 | 5,856 / 5,684 |
+
+`enwik8` is the fastest of three runs each way, `enwik9` one. `mix9`'s
+peaks are `cpress-bench`'s, which holds the input, the archive and the
+restored copy at once; mcm's are GNU time's.
+
+- **mcm is the program the benchmark measured:** its `enwik9` is the
+  benchmark's 144,854,575 to the byte. Its `enwik8` is 1,117 bytes (0.006%)
+  over the benchmark's 18,233,295, which this sitting does not explain;
+  the benchmark's note says `-x11` was tested from "optimized source with
+  comments removed", so the build behind that row may differ from this
+  commit's.
+- **On one machine, mcm is ahead on every count:** 12.7% smaller on
+  `enwik9`, 23% faster compressing and 35% faster decompressing. Its
+  listed 394 ns a byte is slower than it runs here. The exit stays the
+  table's rule, as the choices say, and the write-up will give both.
+- **`mix9` in WSL with GCC is faster than `v1.0`'s Windows record**
+  (431.9 and 534.5 against 454.2 and 561.4 on `enwik9`). The exit's
+  number is the Windows record, so these do not count towards it.
+- `cpress-bench` printed `efe7d14-dirty`: it reads the commit from the
+  directory it runs in, which was the Windows tree with this section's
+  script change uncommitted; the binary was built from the clean clone,
+  and its archives are `v1.0`'s byte for byte.
 
 ## 2. The profile
 
@@ -258,9 +295,10 @@ Written after section 3, before code. What is already fixed:
 
 ## Exit criteria
 
-- [ ] 7a: mcm 0.83 `-x11` and `mix9` on `enwik8` (fastest of 3) and
+- [x] 7a: mcm 0.83 `-x11` and `mix9` on `enwik8` (fastest of 3) and
       `enwik9` (one run) in one sitting, mcm's sizes equal to the
       benchmark's; the rows in the commit message and in section 1.
+      *`enwik9` equal; `enwik8` 0.006% over, unexplained (section 1).*
 - [ ] 7b: the profile's table, both ways, in section 2 and issue #4.
 - [ ] 7c: the prototype's measurements, and codec 5's design, in this
       brief.
