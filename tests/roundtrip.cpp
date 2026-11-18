@@ -558,7 +558,6 @@ constexpr ArchiveChecksums kMix9Checksums{{
     {"itch messages", 0xda7541e1},
 }};
 
-// Codec 4 is experimental until v0.5: until then these may change with it.
 constexpr ArchiveChecksums kItchChecksums{{
     {"empty", 0x16d05e98},
     {"one byte", 0x72501d59},
@@ -567,6 +566,16 @@ constexpr ArchiveChecksums kItchChecksums{{
     {"every byte value", 0x891e1357},
     {"repetitive text", 0x40582d6f},
     {"itch messages", 0xe250f8f1},
+}};
+
+constexpr ArchiveChecksums kWordsChecksums{{
+    {"empty", 0xe0298fae},
+    {"one byte", 0x34c2376a},
+    {"zeros 64 KiB", 0x573b1dfb},
+    {"random 1 MiB", 0x21926f0e},
+    {"every byte value", 0x7ec09e64},
+    {"repetitive text", 0x0fd7f7d7},
+    {"itch messages", 0x04309642},
 }};
 
 void check_determinism(std::string_view codec_name, const ArchiveChecksums& checksums,
@@ -596,6 +605,7 @@ void test_determinism(const std::vector<Sample>& inputs) {
     check_determinism("mix6", kMix6Checksums, inputs);
     check_determinism("mix9", kMix9Checksums, inputs);
     check_determinism("itch", kItchChecksums, inputs);
+    check_determinism("words", kWordsChecksums, inputs);
 }
 
 // Bytes needed to code `data` with the best possible order-0 model, i.e.
