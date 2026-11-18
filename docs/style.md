@@ -23,7 +23,7 @@ Code that works but is hard to follow is not finished.
 | clang-format | `.clang-format` | Before every commit |
 | clang-tidy | `.clang-tidy` | Before a stage is called done |
 | Compiler warnings | `/W4` or `-Wall -Wextra -Wpedantic -Wconversion -Wshadow` | Always; errors in CI (`CPRESS_WERROR`) |
-| ASan + UBSan | `CPRESS_SANITIZE` | In CI on every push |
+| ASan + UBSan | `CPRESS_SANITIZE` | In CI on every push that changes more than documentation |
 
 ## Naming
 
@@ -165,9 +165,10 @@ bits, not `p`.
 - Once a codec has shipped, a small golden archive is checked in and must
   keep decoding forever.
 - CI is the record for compilers and sanitizers: it builds and tests every
-  push with MSVC, GCC, Clang and ASan + UBSan. Locally, build and run
-  `ctest` with one compiler before pushing; use another only to chase a
-  failure CI found.
+  push with MSVC, GCC, Clang and ASan + UBSan, except one that changes only
+  Markdown, `docs/` or the licence, which builds nothing. Locally, build
+  and run `ctest` with one compiler before pushing; use another only to
+  chase a failure CI found.
 
 ## Measurement
 
