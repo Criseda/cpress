@@ -38,6 +38,7 @@ int main(int argc, char** argv) {
     run_message_model_tests();
     run_stream_tests();
     run_message_file_tests();
+    run_word_transform_tests();
     run_roundtrip_tests(files);
 
     std::cout << g_checks << " checks, " << g_failures << " failed\n";

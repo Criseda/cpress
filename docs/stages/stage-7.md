@@ -235,10 +235,54 @@ match model and word hashing together. This section attributes them, and
 the decoder's time too.
 
 **How.** `mix9` at `v1.0`, built by GCC as Release with debug
-information added, compressing and
-decompressing `enwik8` under `perf record`, reported by source line and
-summed by component. One run each way is enough: a profile is a
-proportion, not a speed.
+information added, compressing and decompressing the first 30,000,000
+bytes of `enwik8` under `perf record`, reported by source line and summed
+by component. One run each way is enough: a profile is a proportion, not
+a speed.
+
+*Amended in implementation:* `perf` came from Ubuntu's `linux-tools`
+package unpacked into a home directory, since installing it needs root.
+WSL gives it no hardware counters, so it sampled by a timer, at 2 kHz;
+a timer's sample can land a few instructions after the one that stalled,
+so a line's share is approximate and a file's is the safer reading. The
+slice is 30 MB, not all of `enwik8`, which is enough samples (about
+26,000 a run) and is still coded at level 23.
+
+**Results,** 18 November 2026, shares of the samples by source file:
+
+| File | Compress, level 12 | Compress, level 23 | Decompress, level 23 |
+|---|---|---|---|
+| `history_table.hpp`: hashing, slot search, states | 22.3% | 23.7% | 14.7% |
+| `apm.hpp`: the two APMs | 13.7% | 14.0% | 9.2% |
+| `mix9.hpp`: predict, update, slot selection | 14.5% | 13.6% | 19.9% |
+| `probability_map.hpp`: the state maps | 11.6% | 12.5% | 10.0% |
+| `match_model.hpp` | 2.1% | 6.8% | 12.8% |
+| `mixer.hpp` | 5.5% | 5.5% | 5.0% |
+| `logistic.hpp`: stretch and squash | 3.3% | 3.4% | 8.4% |
+| `state_table.hpp`: next state, counts | 7.7% | 1.3% | 0.9% |
+| the coder and the driver | 5.5% | 4.5% | 5.5% |
+
+- **The second APM is the hottest line compressing:** its interpolation,
+  `apm.hpp:125`, is 8.7% of the samples at level 12 and 9.4% at level 23.
+  Its curves are 4.2 MiB, larger than the processor's second-level cache,
+  read at a place each bit moves: the time is a wait, not arithmetic.
+- **Decompressing, slot selection waits:** `mix9.hpp:399`, where every
+  table selects the slot of the next nibble, is 13.7%, the loads the
+  decoder cannot fetch ahead of a byte it has not decoded.
+- **The mixer is about 5.5% either way,** about 25 ns a byte, below issue
+  #4's bound of 98: a SIMD mixer could save little.
+- **The state table's 7.7% at level 12 is eviction,** working out which
+  slot of a full bucket to give up, which a level-12 table of 4,096 slots
+  does for most nibbles; at level 23 it is 1.3%.
+
+**What it changed.** One change keeps every output byte and goes at the
+second APM: `update()` asks for the next bit's APM curve as soon as the
+bit is known, so it arrives during the update, before `predict()` reads
+it. Measured on the 30 MB slice, two rounds of `v1.0` against it in
+turn, each the fastest of three: compressing 435.8 and 415.4 ns a byte
+against 391.5 and 400.7, decompressing 531.3 and 550.1 against 522.4 and
+513.5. It goes to `main` as a pull request of its own, since it is not
+codec 5's.
 
 **What it produces.** A table of where the time goes, each way, and a
 list of changes that keep codec 3's output, each with the time it could
@@ -280,9 +324,80 @@ on trust:
 time per input byte falls, codec 5 follows its design. If not, this brief
 is amended with what the measurements allow.
 
+**Results,** 18 November 2026. The prototype is a C++ program of about
+350 lines, outside the repository; `cpress` at `v1.0` compressed what it
+wrote, with `mix9` unchanged. Every variant was transformed back and
+compared with its input, byte for byte. Sizes are archives, the dictionary
+inside them; the settings were chosen on `enwik8` and only measured on
+`enwik9`.
+
+The prototype's defaults: *n* = 8, the 128 values of 128 to 255 as code
+bytes, 64 one-byte codes and 48 leads of two-byte codes, alphabetical
+within a code length, case flags. On `enwik8` (`mix9` alone: 19,687,838):
+
+| Variant | Bytes | Against `mix9` |
+|---|---|---|
+| the defaults | 19,059,231 | −3.19% |
+| *n* = 16, the 96 rarest values as code bytes, 48 and 40 | **19,048,520** | **−3.25%** |
+| *n* = 4, 32, 64 | 19,075,923, 19,056,825, 19,054,872 | within 0.1% |
+| frequency order within a code length | 19,279,033 | −2.08% |
+| no case flags | 19,209,032 | −2.43% |
+| words of three letters or more | 19,116,896 | −2.90% |
+| single letters too | 19,048,488 | −3.25% |
+| spaceless: the space before a coded word dropped, its absence flagged | 19,595,338 | −0.47% |
+| ordered by word endings within a code length | 19,121,954 | −2.87% |
+| the second row, and `mix9` at level 24 | 18,944,664 | −3.77% |
+| the second row, and an order-7 table | 18,994,609 | −3.52% |
+| the second row, level 24 and order 7 | **18,890,284** | **−4.05%** |
+
+On `enwik9` (`mix9` alone: 165,953,692), the second row's settings:
+
+| Variant | Bytes | Against `mix9` |
+|---|---|---|
+| the transform, `mix9` unchanged | **157,526,816** | **−5.08%** |
+| the transform, level 24 and order 7 | **153,908,552** | **−7.26%** |
+
+- **The transform passes the decision.** With `mix9` unchanged, `enwik9`
+  is 5.08% smaller, and with the source zipped beside it the total is
+  about 157.6 MB, under 160,364,392.
+- **The model codes less.** The transformed `enwik9` is 623,985,073
+  bytes, 62.4% of the input. On `enwik8`, one timed run of the defaults
+  gave about 318 ns a byte compressing and 424 decompressing per input
+  byte, transform included, against 440 and 566.
+- **The gain grows with the file,** −3.25% on `enwik8` and −5.08% on
+  `enwik9`. On `enwik9` the dictionary filled the layout's 77,616 codes,
+  so a layout with more three-byte codes may give more.
+- **What failed:** dropping the space before a word, which `mix9`
+  predicts well and whose absence then costs a flag; ordering by
+  frequency or by word endings; dropping the case flags.
+- **Not measured:** code bytes below 128, which `mix9`'s word contexts
+  would not count as letters. Codes of 128 and up keep a coded word a
+  word to them, and no reason to give that up appeared.
+
 ## 4. Codec 5
 
-Written after section 3, before code. What is already fixed:
+*Written after section 3, before its code.* Codec 5, `words`, is the
+transform of section 3's second row and `mix9`'s model, unchanged, behind
+it:
+
+- **The transform** is `src/text/word_transform.hpp`: `forward()` reads
+  the input twice, to count words and then to write the stream; `inverse()`
+  reads a stream back. The stream's layout, dictionary and codes are as
+  the prototype's, and its format is in the header.
+- **The payload** is `mix9`'s level for the stream, the stream's size in
+  8 bytes, then the stream as codec 3 codes bytes. The decoder rebuilds
+  the stream, then the original.
+- **The model is `mix9`'s,** the same class codec 3 uses. Level 24 and
+  an order-7 table gave another 2.2% on `enwik9`; they need a model
+  that is not codec 3's, and are measured for time before they are
+  added, as the brief's scope says.
+- **Untrusted input:** every field of the stream is checked as it is
+  read: the number of code bytes, their order, the flags, the code
+  lengths, each dictionary word's letters and length, the number of
+  words, every code, and the size it expands to, which may not pass the
+  original size at any point.
+
+What is already fixed:
 
 - One predictor both ways, integer only, the standard library only, as
   every codec.
@@ -299,8 +414,8 @@ Written after section 3, before code. What is already fixed:
       `enwik9` (one run) in one sitting, mcm's sizes equal to the
       benchmark's; the rows in the commit message and in section 1.
       *`enwik9` equal; `enwik8` 0.006% over, unexplained (section 1).*
-- [ ] 7b: the profile's table, both ways, in section 2 and issue #4.
-- [ ] 7c: the prototype's measurements, and codec 5's design, in this
+- [x] 7b: the profile's table, both ways, in section 2 and issue #4.
+- [x] 7c: the prototype's measurements, and codec 5's design, in this
       brief.
 - [ ] Codec 5 makes `enwik9` in under 160,364,392 bytes in all, archive
       and decompressor zip, compressing in under 394 ns a byte, on this

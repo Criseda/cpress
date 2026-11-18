@@ -123,6 +123,7 @@ void run_order_table_tests();
 void run_message_model_tests();
 void run_stream_tests();
 void run_message_file_tests();
+void run_word_transform_tests();
 void run_roundtrip_tests(std::span<const char* const> files);
 
 }  // namespace cpress::test
