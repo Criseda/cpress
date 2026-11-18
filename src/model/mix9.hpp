@@ -44,9 +44,11 @@
 // uses, so the two cannot disagree. The encoder has the whole input and
 // gives it the true bytes, a whole byte before the buckets are needed. The
 // decoder cannot know the next byte, but a running match predicts it, and
-// prefetch_from_match() fetches for that guess. A wrong guess fetches lines
-// nobody reads: a little memory traffic, never a changed prediction, since
-// a hint writes nothing and reads nothing the model uses.
+// prefetch_from_match() fetches for that guess. As bits arrive, the decoder
+// also narrows what is possible, and prefetch_decoded() fetches for the
+// last two candidates. A wrong guess fetches lines nobody reads: a little
+// memory traffic, never a changed prediction, since a hint writes nothing
+// and reads nothing the model uses.
 //
 // Update rule: every map, table, the match model, the mixer's selected
 // weights and the APMs' nearer points learn each bit; see each component.
@@ -359,6 +361,64 @@ public:
     void prefetch_from_match() const noexcept {
         if (match_.length() == 0) return;
         prefetch_after(match_.predicted_byte(0), match_.predicted_byte(1));
+    }
+
+    // A hint for a decoder, after each bit it decodes: `bits` of the byte
+    // being decoded are known, 1 to 8, and the rest are not. Two lookups
+    // the encoder fetched a byte ahead wait on bits the decoder does not
+    // have yet: the second nibble's buckets, which depend on the first
+    // nibble, and the next byte's first, which depend on this byte. Each is
+    // fetched once only two candidates are left:
+    //
+    //   kSecondNibbleBits  the first nibble is one of two, so in every
+    //                      table the second nibble's bucket is one of two:
+    //                      both are fetched, a bit before select_slots()
+    //                      needs one.
+    //   kNextByteBits      the byte is one of two, and so are the next
+    //                      byte's first buckets and its match model entry:
+    //                      both are fetched, a bit before the byte ends.
+    //                      Not while a match runs: it has agreed with every
+    //                      bit so far, and prefetch_from_match() fetched
+    //                      for its guess at the byte boundary.
+    //
+    // Fetching the second nibble's four candidates, a bit earlier, was
+    // slower than fetching none. Changes nothing the model predicts.
+    void prefetch_decoded(int bits) const noexcept {
+        if (bits == kSecondNibbleBits) {
+            for (const std::array<std::uint64_t, kTables>& keys : second_nibble_candidates()) {
+                for (std::size_t i = 0; i < kTables; ++i) tables_[i].prefetch(keys[i]);
+            }
+        } else if (bits == kNextByteBits && match_.length() == 0) {
+            for (const ByteContext& after : next_byte_candidates()) {
+                match_.prefetch_after(after.history);
+                const std::array<std::uint64_t, kTables> keys = table_keys(after, kFirstNibble);
+                for (std::size_t i = 0; i < kTables; ++i) tables_[i].prefetch(keys[i]);
+            }
+        }
+    }
+
+    // How many bits of a byte prefetch_decoded() waits for, each time.
+    static constexpr int kSecondNibbleBits = 3;
+    static constexpr int kNextByteBits = 7;
+
+    // In every table, the second nibble's key for each first nibble still
+    // possible when kSecondNibbleBits of it are known: the one whose last
+    // bit is 0, then the one whose last bit is 1.
+    [[nodiscard]] std::array<std::array<std::uint64_t, kTables>, 2> second_nibble_candidates()
+        const noexcept {
+        assert(marker_ == kFirstNibble && (node_ >> kSecondNibbleBits) == 1);
+        const std::uint32_t nibble = (node_ - (1U << kSecondNibbleBits)) * 2;
+        return {table_keys(context_, kNibbleDone + nibble),
+                table_keys(context_, kNibbleDone + nibble + 1)};
+    }
+
+    // The context after each byte still possible when kNextByteBits of it
+    // are known: the byte whose last bit is 0, then the one whose last bit
+    // is 1.
+    [[nodiscard]] std::array<ByteContext, 2> next_byte_candidates() const noexcept {
+        assert(marker_ != kFirstNibble && (partial_ >> kNextByteBits) == 1);
+        const std::uint32_t byte = (partial_ - (1U << kNextByteBits)) * 2;
+        return {next_context(context_, byte), next_context(context_, byte + 1)};
     }
 
     // For tests.
