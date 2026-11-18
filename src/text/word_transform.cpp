@@ -37,14 +37,14 @@ constexpr std::size_t kMaxCodeBytes = 128;  // the values 128 to 255
 
 // How a word is written. Only a mixed one, such as "McDonald", is never
 // coded: its case would need more than a flag.
-enum class Case : std::uint8_t { lower, capital, upper, mixed };
+enum class Case : std::uint8_t { Lower, Capital, Upper, Mixed };
 
 [[nodiscard]] Case case_of(ByteView word) noexcept {
     const auto capitals = static_cast<std::size_t>(std::ranges::count_if(word, is_upper));
-    if (capitals == 0) return Case::lower;
-    if (capitals == 1 && is_upper(word.front())) return Case::capital;
-    if (capitals == word.size()) return Case::upper;
-    return Case::mixed;
+    if (capitals == 0) return Case::Lower;
+    if (capitals == 1 && is_upper(word.front())) return Case::Capital;
+    if (capitals == word.size()) return Case::Upper;
+    return Case::Mixed;
 }
 
 // The end of the run of letters that starts at `start`.
@@ -58,7 +58,7 @@ enum class Case : std::uint8_t { lower, capital, upper, mixed };
 // flag can restore.
 [[nodiscard]] bool codable(ByteView run) noexcept {
     return run.size() >= kMinWordLetters && run.size() <= kMaxWordLetters &&
-           case_of(run) != Case::mixed;
+           case_of(run) != Case::Mixed;
 }
 
 // A word's lower-case form, written into a buffer this owns, so that looking
@@ -78,7 +78,7 @@ private:
 
 // A map keyed by words that can be searched with a string_view.
 struct WordHash {
-    using is_transparent = void;
+    using is_transparent = void;  // NOLINT(readability-identifier-naming): the standard's name
     [[nodiscard]] std::size_t operator()(std::string_view word) const noexcept {
         return std::hash<std::string_view>{}(word);
     }
@@ -89,29 +89,48 @@ using WordMap = std::unordered_map<std::string, Value, WordHash, std::equal_to<>
 // The code bytes, flags and code lengths of one stream.
 class Layout {
 public:
-    std::vector<std::uint8_t> codes;  // ascending
-    std::uint8_t escape = 0;
-    std::uint8_t capital = 0;
-    std::uint8_t upper = 0;
-    std::size_t one = 0;  // B1
-    std::size_t two = 0;  // B2
-
-    // Fills in where each code byte is, once codes is set.
-    void index_codes() noexcept {
+    // `codes` ascending; `flags` the escape, the capital flag and the
+    // all-capitals flag; `one` + `two` at most the number of codes.
+    Layout(std::vector<std::uint8_t> codes, std::array<std::uint8_t, 3> flags, std::size_t one,
+           std::size_t two)
+        : codes_(std::move(codes)),
+          escape_(flags[0]),
+          capital_(flags[1]),
+          upper_(flags[2]),
+          one_(one),
+          two_(two) {
         position_.fill(kNotACode);
-        for (std::size_t i = 0; i < codes.size(); ++i) {
-            position_[codes[i]] = static_cast<std::int16_t>(i);
+        for (std::size_t i = 0; i < codes_.size(); ++i) {
+            position_[codes_[i]] = static_cast<std::int16_t>(i);
         }
     }
 
+    [[nodiscard]] const std::vector<std::uint8_t>& codes() const noexcept {
+        return codes_;
+    }
+    [[nodiscard]] std::uint8_t escape() const noexcept {
+        return escape_;
+    }
+    [[nodiscard]] std::uint8_t capital() const noexcept {
+        return capital_;
+    }
+    [[nodiscard]] std::uint8_t upper() const noexcept {
+        return upper_;
+    }
+    [[nodiscard]] std::size_t one() const noexcept {
+        return one_;
+    }
+    [[nodiscard]] std::size_t two() const noexcept {
+        return two_;
+    }
     [[nodiscard]] std::size_t k() const noexcept {
-        return codes.size();
+        return codes_.size();
     }
     [[nodiscard]] std::size_t three() const noexcept {
-        return k() - one - two;
+        return k() - one_ - two_;
     }
     [[nodiscard]] std::size_t capacity() const noexcept {
-        return one + (two * k()) + (three() * k() * k());
+        return one_ + (two_ * k()) + (three() * k() * k());
     }
 
     // The index of a code byte among the codes, or -1.
@@ -120,30 +139,36 @@ public:
     }
     // True for a byte the text can only hold escaped.
     [[nodiscard]] bool special(std::uint8_t byte) const noexcept {
-        return position(byte) >= 0 || byte == escape || byte == capital || byte == upper;
+        return position(byte) >= 0 || byte == escape_ || byte == capital_ || byte == upper_;
     }
 
     // Appends the code of word `index`, below capacity().
     void append_code(std::size_t index, Bytes& out) const {
         const std::size_t kk = k();
-        if (index < one) {
-            out.push_back(codes[index]);
+        if (index < one_) {
+            out.push_back(codes_[index]);
             return;
         }
-        index -= one;
-        if (index < two * kk) {
-            out.push_back(codes[one + (index / kk)]);
-            out.push_back(codes[index % kk]);
+        index -= one_;
+        if (index < two_ * kk) {
+            out.push_back(codes_[one_ + (index / kk)]);
+            out.push_back(codes_[index % kk]);
             return;
         }
-        index -= two * kk;
-        out.push_back(codes[one + two + (index / (kk * kk))]);
-        out.push_back(codes[(index / kk) % kk]);
-        out.push_back(codes[index % kk]);
+        index -= two_ * kk;
+        out.push_back(codes_[one_ + two_ + (index / (kk * kk))]);
+        out.push_back(codes_[(index / kk) % kk]);
+        out.push_back(codes_[index % kk]);
     }
 
 private:
     static constexpr std::int16_t kNotACode = -1;
+    std::vector<std::uint8_t> codes_;
+    std::uint8_t escape_;
+    std::uint8_t capital_;
+    std::uint8_t upper_;
+    std::size_t one_;  // B1
+    std::size_t two_;  // B2
     std::array<std::int16_t, 256> position_{};
 };
 
@@ -170,17 +195,10 @@ private:
         if (byte != '\t' && byte != '\n' && byte != '\r') control.push_back(byte);
     }
 
-    Layout layout;
-    layout.codes = rarest(occurrences, std::move(high), kCodeBytes);
-    std::ranges::sort(layout.codes);
+    std::vector<std::uint8_t> codes = rarest(occurrences, std::move(high), kCodeBytes);
+    std::ranges::sort(codes);
     const std::vector<std::uint8_t> flags = rarest(occurrences, std::move(control), 3);
-    layout.escape = flags[0];
-    layout.capital = flags[1];
-    layout.upper = flags[2];
-    layout.one = kOneByteCodes;
-    layout.two = kTwoByteLeads;
-    layout.index_codes();
-    return layout;
+    return {std::move(codes), {flags[0], flags[1], flags[2]}, kOneByteCodes, kTwoByteLeads};
 }
 
 // The dictionary: every word seen at least kMinCount times, as many as the
@@ -221,8 +239,8 @@ private:
     std::vector<std::string> words;
     words.reserve(frequent.size());
     for (auto& entry : frequent) words.push_back(std::move(entry.first));
-    const std::size_t one = std::min(words.size(), layout.one);
-    const std::size_t two = std::min(words.size(), one + (layout.two * layout.k()));
+    const std::size_t one = std::min(words.size(), layout.one());
+    const std::size_t two = std::min(words.size(), one + (layout.two() * layout.k()));
     const auto at = [&](std::size_t n) { return words.begin() + static_cast<std::ptrdiff_t>(n); };
     std::sort(at(0), at(one));
     std::sort(at(one), at(two));
@@ -261,21 +279,19 @@ private:
 }
 
 [[nodiscard]] Layout read_layout(Reader& in) {
-    Layout layout;
     const std::size_t k = std::size_t{in.next("the layout")} + 1;
     if (k > kMaxCodeBytes) corrupt("the word stream has more than 128 code bytes");
+    std::vector<std::uint8_t> codes;
     for (std::size_t i = 0; i < k; ++i) {
         const std::uint8_t code = in.next("the layout");
-        if (code < 128 || (!layout.codes.empty() && code <= layout.codes.back())) {
+        if (code < 128 || (!codes.empty() && code <= codes.back())) {
             corrupt("the word stream's code bytes are not ascending values of 128 or more");
         }
-        layout.codes.push_back(code);
+        codes.push_back(code);
     }
-    layout.escape = in.next("the layout");
-    layout.capital = in.next("the layout");
-    layout.upper = in.next("the layout");
-    const std::array<std::uint8_t, 3> flags{layout.escape, layout.capital, layout.upper};
+    std::array<std::uint8_t, 3> flags{};
     for (std::size_t i = 0; i < flags.size(); ++i) {
+        flags[i] = in.next("the layout");
         if (flags[i] >= 128 || is_letter(flags[i])) {
             corrupt("a word stream flag is a letter or a code byte");
         }
@@ -283,12 +299,10 @@ private:
             if (flags[i] == flags[j]) corrupt("two word stream flags are the same byte");
         }
     }
-    layout.one = in.next("the layout");
-    layout.two = in.next("the layout");
-    if (layout.one + layout.two > k)
-        corrupt("the word stream's code lengths exceed its code bytes");
-    layout.index_codes();
-    return layout;
+    const std::size_t one = in.next("the layout");
+    const std::size_t two = in.next("the layout");
+    if (one + two > k) corrupt("the word stream's code lengths exceed its code bytes");
+    return {std::move(codes), flags, one, two};
 }
 
 // The dictionary, as views of the stream.
@@ -320,13 +334,13 @@ private:
     };
     const std::size_t kk = layout.k();
     const std::size_t p = code_position(lead);
-    if (p < layout.one) return p;
-    if (p < layout.one + layout.two) {
-        return layout.one + ((p - layout.one) * kk) + code_position(in.next("a word code"));
+    if (p < layout.one()) return p;
+    if (p < layout.one() + layout.two()) {
+        return layout.one() + ((p - layout.one()) * kk) + code_position(in.next("a word code"));
     }
     const std::size_t second = code_position(in.next("a word code"));
     const std::size_t third = code_position(in.next("a word code"));
-    return layout.one + (layout.two * kk) + ((p - layout.one - layout.two) * kk * kk) +
+    return layout.one() + (layout.two() * kk) + ((p - layout.one() - layout.two()) * kk * kk) +
            (second * kk) + third;
 }
 
@@ -344,12 +358,12 @@ Bytes forward(ByteView input) {
     Bytes out;
     out.reserve(input.size() + (input.size() / 8));
     out.push_back(static_cast<std::uint8_t>(layout.k() - 1));
-    out.insert(out.end(), layout.codes.begin(), layout.codes.end());
-    out.push_back(layout.escape);
-    out.push_back(layout.capital);
-    out.push_back(layout.upper);
-    out.push_back(static_cast<std::uint8_t>(layout.one));
-    out.push_back(static_cast<std::uint8_t>(layout.two));
+    out.insert(out.end(), layout.codes().begin(), layout.codes().end());
+    out.push_back(layout.escape());
+    out.push_back(layout.capital());
+    out.push_back(layout.upper());
+    out.push_back(static_cast<std::uint8_t>(layout.one()));
+    out.push_back(static_cast<std::uint8_t>(layout.two()));
     for (const std::string& word : words) {
         out.insert(out.end(), word.begin(), word.end());
         out.push_back(kLineFeed);
@@ -361,7 +375,7 @@ Bytes forward(ByteView input) {
     while (i < input.size()) {
         const std::uint8_t byte = input[i];
         if (!is_letter(byte)) {
-            if (layout.special(byte)) out.push_back(layout.escape);
+            if (layout.special(byte)) out.push_back(layout.escape());
             out.push_back(byte);
             ++i;
             continue;
@@ -371,8 +385,8 @@ Bytes forward(ByteView input) {
         const auto found = codable(run) ? code_of.find(lower.of(run)) : code_of.end();
         if (found != code_of.end()) {
             const Case c = case_of(run);
-            if (c == Case::capital) out.push_back(layout.capital);
-            if (c == Case::upper) out.push_back(layout.upper);
+            if (c == Case::Capital) out.push_back(layout.capital());
+            if (c == Case::Upper) out.push_back(layout.upper());
             layout.append_code(found->second, out);
         } else {
             out.insert(out.end(), run.begin(), run.end());  // letters are never special
@@ -403,23 +417,23 @@ void inverse(ByteView transformed, std::uint64_t original_size, Bytes& output) {
         const ByteView word = words[index];
         room_for(word.size());
         for (std::size_t i = 0; i < word.size(); ++i) {
-            const bool raise = c == Case::upper || (c == Case::capital && i == 0);
+            const bool raise = c == Case::Upper || (c == Case::Capital && i == 0);
             output.push_back(raise ? to_upper(word[i]) : word[i]);
         }
     };
 
     while (!in.done()) {
         const std::uint8_t byte = in.next("the text");
-        if (byte == layout.escape) {
+        if (byte == layout.escape()) {
             room_for(1);
             output.push_back(in.next("an escape"));
-        } else if (byte == layout.capital || byte == layout.upper) {
+        } else if (byte == layout.capital() || byte == layout.upper()) {
             const std::uint8_t lead = in.next("a flagged word");
             if (layout.position(lead) < 0) corrupt("a case flag is not followed by a word code");
             write_word(read_code(in, layout, lead),
-                       byte == layout.capital ? Case::capital : Case::upper);
+                       byte == layout.capital() ? Case::Capital : Case::Upper);
         } else if (layout.position(byte) >= 0) {
-            write_word(read_code(in, layout, byte), Case::lower);
+            write_word(read_code(in, layout, byte), Case::Lower);
         } else {
             room_for(1);
             output.push_back(byte);
