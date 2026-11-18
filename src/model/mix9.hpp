@@ -30,9 +30,11 @@
 // Each history table has 2^level slots of 16 bytes, except orders 1 and 2,
 // which have too few contexts to use more than 2^14 and 2^22. The match
 // model's buffer is as large as one history table. The two APMs, the mixer
-// and the maps add a fixed 4.2 MiB, most of it the second APM. The tables,
-// the match model and the APMs are on large pages where the platform grants
-// them (table_allocator.hpp).
+// and the maps add a fixed 4.2 MiB, most of it the second APM. With
+// shortcuts, FlagModel adds two tables of one byte per entry, each with an
+// eighth as many entries as a history table has slots (flag_table_bits()).
+// The tables, the match model and the APMs are on large pages where the
+// platform grants them (table_allocator.hpp).
 //
 // Why look ahead. Each byte selects sixteen buckets, two per history table,
 // and a match model entry, at places that depend on the byte before it, in
@@ -51,15 +53,29 @@
 // and reads nothing the model uses.
 //
 // Update rule: every map, table, the match model, the mixer's selected
-// weights and the APMs' nearer points learn each bit; see each component.
+// weights and the APMs' nearer points learn each bit, except what the
+// shortcuts below skip; see each component.
 //
-// Two models, one class. ContextMix is a template on the number of byte
-// contexts and the largest level, and everything above is written in terms
-// of them. Mix9 is ContextMix<6, 23>, codec 3's model, frozen at v0.3.
-// Mix10 is ContextMix<7, 25>, codec 5's: an order-7 table as well, so ten
-// predictions, and a largest level with four times the memory, for the
-// word streams of files of a gigabyte (docs/stages/stage-7.md, sections 3
-// and 4).
+// Three models, one class. ContextMix is a template on the number of byte
+// contexts, the largest level and whether it takes shortcuts, and
+// everything above is written in terms of them. Mix9 is ContextMix<6, 23>,
+// codec 3's model, frozen at v0.3. Mix10 is ContextMix<7, 25>, codec 5's:
+// an order-7 table as well, so ten predictions, and a largest level with
+// four times the memory, for the word streams of files of a gigabyte
+// (docs/stages/stage-7.md, sections 3 and 4), frozen at v1.1. Mix10Flag is
+// Mix10 with shortcuts, codec 6's.
+//
+// Shortcuts: work skipped where the model is already sure, measured in
+// docs/stages/stage-8.md.
+//   the flag    while a long match runs, the byte can be coded as one
+//               decision, "it is the match's guess" (FlagModel). When it
+//               is, nothing else predicts or learns the byte. When it is
+//               not, the eighth bit is certain once seven agree with the
+//               guess, and is not coded (exclusion).
+//   the APMs    are neither read nor trained on a bit the mixer is already
+//               near certain of.
+//   the mixer   does not learn from a bit it predicted within a few parts
+//               in 4096.
 //
 // Technique: this is the lpaq class of compressor, after Matt Mahoney's
 // lpaq1 (2007): bit-history states in checked nibble slots, read through
@@ -69,6 +85,7 @@
 
 #include "model/apm.hpp"
 #include "model/context_table.hpp"
+#include "model/flag_model.hpp"
 #include "model/history_table.hpp"
 #include "model/logistic.hpp"
 #include "model/match_model.hpp"
@@ -82,6 +99,8 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace cpress::model {
@@ -156,14 +175,33 @@ namespace detail {
 static_assert(order_slot_bits(1) == 14);
 static_assert(order_slot_bits(2) == 22);
 
+// What a model without shortcuts holds in the flag model's place: nothing.
+struct NoFlagModel {
+    explicit constexpr NoFlagModel(int /*table_bits*/) noexcept {}
+};
+
 }  // namespace detail
 
-template <int Orders, int MaxLevel>
+template <int Orders, int MaxLevel, bool Shortcuts = false>
 class ContextMix {
 public:
     // The byte contexts: 1 to kOrders bytes.
     static constexpr int kOrders = Orders;
     static_assert(kOrders >= 2 && kOrders <= kMaxOrder);
+
+    // Codec 6's shortcuts; see the top of this file. The values were chosen
+    // in the prototype (docs/stages/stage-8.md, section 2).
+    static constexpr bool kShortcuts = Shortcuts;
+    // The flag is consulted while a match has agreed this many bytes...
+    static constexpr std::uint32_t kFlagMinLength = 12;
+    // ...and coded if FlagModel gives the guess this p12 or more: 95%.
+    static constexpr std::uint32_t kFlagGate = 3900;
+    // The APMs are skipped when the mixer's stretched output is beyond
+    // +-this: 5.9 units of ln odds, so the mixer is over 99.7% sure.
+    static constexpr std::int32_t kApmSkipStretch = 1500;
+    // The mixer does not learn from a bit it predicted within this, out of
+    // kProbOne.
+    static constexpr std::uint32_t kMixerSkipError = 20;
 
     // The history tables: the orders, then the word and bigram contexts.
     static constexpr std::size_t kTables = static_cast<std::size_t>(kOrders) + 2;
@@ -204,6 +242,13 @@ public:
         return std::min(level, detail::order_slot_bits(static_cast<int>(table) + 1));
     }
 
+    // log2 of each flag table's entries at `level`: an eighth as many as a
+    // history table has slots, 2^22 at level 25.
+    [[nodiscard]] static constexpr int flag_table_bits(int level) noexcept {
+        return level - 3;
+    }
+    static_assert(flag_table_bits(kMinLevel) >= FlagModel::kMinTableBits);
+
     // Bytes a model at `level` allocates: every table, buffer, map and
     // weight.
     [[nodiscard]] static constexpr std::uint64_t memory_bytes(int level) noexcept {
@@ -216,6 +261,7 @@ public:
         bytes += Apm::memory_bytes(kPartialByteContexts);
         bytes += Apm::memory_bytes(kPreviousByteContexts);
         bytes += kWeightSets * kInputs * sizeof(std::int32_t);  // the mixer
+        if constexpr (kShortcuts) bytes += FlagModel::memory_bytes(flag_table_bits(level));
         return bytes;
     }
 
@@ -270,7 +316,8 @@ public:
           match_(match_buffer_bits(level), match_hash_bits(level)),
           mixer_(kWeightSets),
           by_partial_byte_(kPartialByteContexts),
-          by_previous_byte_(kPreviousByteContexts) {
+          by_previous_byte_(kPreviousByteContexts),
+          flag_(flag_table_bits(level)) {
         select_slots();
     }
 
@@ -281,9 +328,14 @@ public:
         }
         st[kTables] = match_.predict(partial_);
         const std::uint32_t mixed = mixer_.mix(st);
+        const std::int32_t mixed_st = stretch(mixed);
+        if constexpr (kShortcuts) {
+            mixed_ = mixed;
+            apms_skipped_ = mixed_st > kApmSkipStretch || mixed_st < -kApmSkipStretch;
+            if (apms_skipped_) return mixed;
+        }
 
         // Each term is in [kProbMin, kProbMax], so their weighted mean is.
-        const std::int32_t mixed_st = stretch(mixed);
         const std::uint32_t previous_byte = static_cast<std::uint32_t>(context_.history) & 0xFF;
         const std::uint32_t refined = by_partial_byte_.refine(mixed_st, partial_);
         const std::uint32_t refined_by_previous =
@@ -302,9 +354,7 @@ public:
         // and the bit has just decided the next: fetch it now, an update's
         // work before predict() reads it. A hint; it changes nothing.
         by_previous_byte_.prefetch(next_previous_byte_context(bit));
-        mixer_.update(bit);  // from its own output, not the refined one
-        by_partial_byte_.update(bit);
-        by_previous_byte_.update(bit);
+        learn_mix(bit);
         for (std::size_t i = 0; i < kTables; ++i) {
             maps_[i].update(bit);
             tables_[i].update(node_, bit);
@@ -319,11 +369,14 @@ public:
         if (marker_ == kFirstNibble) {
             marker_ = node_;  // exactly the second nibble's marker
         } else {
+            if constexpr (kShortcuts) settle_guess(partial_ - kByteDone);
             push_byte(partial_ - kByteDone);
             marker_ = kFirstNibble;
             partial_ = 1;
         }
-        select_slots();
+        // With shortcuts, a byte's first slots wait for offer_flag(), so
+        // that a byte the flag codes never selects them.
+        if (!kShortcuts || marker_ != kFirstNibble) select_slots();
         node_ = 1;
     }
 
@@ -354,6 +407,14 @@ public:
         match_.prefetch_after(ahead.context.history);  // read as `byte` ends
         for (std::size_t i = 0; i < kTables; ++i) tables_[i].prefetch(ahead.first_nibble[i]);
         for (std::size_t i = 0; i < kTables; ++i) tables_[i].prefetch(ahead.second_nibble[i]);
+        if constexpr (kShortcuts) {
+            // If the match runs on through `byte`, the flag of the byte
+            // after it will weigh the match's next guess. Without this,
+            // the flag's two reads cost what its skipped bytes save.
+            if (match_.length() != 0 && byte == match_.predicted_byte(0)) {
+                flag_.prefetch(ahead.context.history, match_.predicted_byte(1));
+            }
+        }
     }
 
     // prefetch_after() with the match model's guess for both bytes, if a
@@ -421,6 +482,73 @@ public:
         return {next_context(context_, byte), next_context(context_, byte + 1)};
     }
 
+    // The predicted-byte flag, with shortcuts only; the calls and their
+    // order are the Flagging concept's (predictor.hpp).
+    //
+    // At a byte boundary: whether this byte starts with a flag. FlagModel
+    // weighs the match's guess while the match has agreed kFlagMinLength
+    // bytes or more, and the flag is coded if it gives the guess kFlagGate
+    // or more. If it is not coded, the byte's first slots are selected now.
+    [[nodiscard]] bool offer_flag() noexcept
+        requires kShortcuts
+    {
+        assert(node_ == 1 && marker_ == kFirstNibble);  // at a byte boundary
+        guess_.reset();
+        flag_coded_ = false;
+        if (match_.length() >= kFlagMinLength) {
+            guess_ = match_.predicted_byte(0);
+            flag_p12_ = flag_.predict(context_.history, *guess_, match_.length());
+            flag_coded_ = flag_p12_ >= kFlagGate;
+        }
+        if (!flag_coded_) select_slots();
+        return flag_coded_;
+    }
+
+    // The byte the flag claims, and P(the byte is it) as a p12. Only after
+    // offer_flag() returned true.
+    [[nodiscard]] std::uint32_t guess() const noexcept
+        requires kShortcuts
+    {
+        assert(flag_coded_ && guess_.has_value());
+        return *guess_;
+    }
+    [[nodiscard]] std::uint32_t predict_flag() const noexcept
+        requires kShortcuts
+    {
+        assert(flag_coded_);
+        return flag_p12_;
+    }
+
+    // The flag's outcome. A hit is the whole byte: it joins the context and
+    // the match, and nothing else learns it. A miss rules the guess out,
+    // and the byte's eight bits follow.
+    void update_flag(int hit) noexcept
+        requires kShortcuts
+    {
+        assert(flag_coded_ && (hit == 0 || hit == 1));
+        flag_.update(hit);
+        if (hit != 0) {
+            const std::uint32_t byte = *guess_;
+            guess_.reset();
+            push_byte(byte);
+            return;
+        }
+        select_slots();
+        excluded_ = guess_;
+    }
+
+    // Exclusion: after a flag that missed, the byte is not the guess, so
+    // once seven of its bits are the guess's, the eighth is certain. Before
+    // each bit: that bit, or nothing.
+    [[nodiscard]] std::optional<int> forced_bit() const noexcept
+        requires kShortcuts
+    {
+        if (!excluded_.has_value() || partial_ != ((kByteDone | *excluded_) >> 1)) {
+            return std::nullopt;
+        }
+        return static_cast<int>(~*excluded_ & 1);
+    }
+
     // For tests.
     [[nodiscard]] const ByteContext& context() const noexcept {
         return context_;
@@ -477,6 +605,30 @@ private:
         return partial + (kByteDone * previous_byte);
     }
 
+    // The mixer and the APMs learn the bit, from what predict() left. With
+    // shortcuts, the mixer skips a bit it predicted within kMixerSkipError,
+    // and the APMs a bit predict() did not give them.
+    void learn_mix(int bit) noexcept {
+        if constexpr (kShortcuts) {
+            const std::uint32_t error = bit != 0 ? kProbOne - mixed_ : mixed_;
+            if (error >= kMixerSkipError) mixer_.update(bit);
+            if (apms_skipped_) return;
+        } else {
+            mixer_.update(bit);  // from its own output, not the refined one
+        }
+        by_partial_byte_.update(bit);
+        by_previous_byte_.update(bit);
+    }
+
+    // At the end of a byte coded bit by bit. A guess the flag weighed but
+    // did not code still teaches FlagModel whether it was right; a coded
+    // flag learned at update_flag(). Either way, exclusion ends.
+    void settle_guess(std::uint32_t byte) noexcept {
+        if (guess_.has_value() && !flag_coded_) flag_.update(byte == *guess_ ? 1 : 0);
+        guess_.reset();
+        excluded_.reset();
+    }
+
     // Points every table at its slot for the nibble about to be coded.
     void select_slots() noexcept {
         const std::array<std::uint64_t, kTables> keys = table_keys(context_, marker_);
@@ -502,16 +654,28 @@ private:
     std::uint32_t marker_ = kFirstNibble;  // which nibble is being coded; see context_key()
     std::uint32_t node_ = 1;               // position in that nibble's tree, 1 to 15
     std::uint32_t partial_ = 1;            // the byte's bits so far, after a leading 1
+
+    // The shortcuts' state. Without shortcuts the flag model is empty and
+    // the rest is never read.
+    std::conditional_t<kShortcuts, FlagModel, detail::NoFlagModel> flag_;
+    std::optional<std::uint32_t> guess_;     // the guess FlagModel weighed for this byte
+    std::optional<std::uint32_t> excluded_;  // the guess a coded flag ruled out
+    std::uint32_t flag_p12_ = 0;             // FlagModel's P(the byte is the guess)
+    bool flag_coded_ = false;                // whether this byte started with a flag
+    std::uint32_t mixed_ = kProbOne / 2;     // the mixer's last output
+    bool apms_skipped_ = false;              // whether the last predict() skipped the APMs
 };
 
-// Codec 3's model, frozen at v0.3, and codec 5's.
+// Codec 3's model, frozen at v0.3; codec 5's, frozen at v1.1; and codec 6's.
 using Mix9 = ContextMix<6, 23>;
 using Mix10 = ContextMix<7, 25>;
+using Mix10Flag = ContextMix<7, 25, true>;
 
-static_assert(Predictor<Mix9> && Predictor<Mix10>);
+static_assert(Predictor<Mix9> && Predictor<Mix10> && Predictor<Mix10Flag>);
 // Without this, a hint whose signature drifted would leave the models short
 // of the concept, the coding loops would quietly stop calling it, and every
-// test of the output would still pass.
-static_assert(Prefetching<Mix9> && Prefetching<Mix10>);
+// test of the output would still pass. The same holds for the flag.
+static_assert(Prefetching<Mix9> && Prefetching<Mix10> && Prefetching<Mix10Flag>);
+static_assert(!Flagging<Mix9> && !Flagging<Mix10> && Flagging<Mix10Flag>);
 
 }  // namespace cpress::model

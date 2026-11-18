@@ -58,7 +58,7 @@ Compression Benchmark's own, timed on other machines.*
 what each part is worth, where cpress sits among other compressors, and
 every measurement with the commit that made it.
 
-## Six codecs
+## Seven codecs
 
 - `stored` does not compress.
 - `order0`: the arithmetic coder and an order-0 model, stage 1.
@@ -73,6 +73,9 @@ every measurement with the commit that made it.
 - `words`: text with its frequent words replaced by codes from a dictionary
   of the input's own words, then `mix9`'s model with an order-7 table and
   four times the memory. Stage 7; asked for by name, `--codec words`.
+- `words2`: `words` with shortcuts. A byte the match model is sure of is
+  coded as one decision, and the APMs and the mixer skip bits the model is
+  already sure of. Stage 8, experimental; `--codec words2`.
 
 ## Build
 
@@ -176,6 +179,7 @@ match the header.
 | 3 | `mix9` | As `mix6`, with a level of 10 to 23 (frozen at `v0.3`) |
 | 4 | `itch` | One byte, the model's memory level, 10 to 23; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.5`) |
 | 5 | `words` | One byte, the model's memory level, 10 to 25; the size of the word stream, 8 bytes; then arithmetic-coded bits and 4 flush bytes (frozen at `v1.1`) |
+| 6 | `words2` | As `words`, with a flag before some bytes (experimental) |
 
 `order0`, `mix6` and `mix9` code each byte most significant bit first. Every bit is
 coded with a 12-bit probability P(bit = 1) from the model, by a carryless
@@ -219,6 +223,14 @@ is coded as `mix9` codes bytes, with an order-7 table too and levels up to
 every field of the stream as it reads it, and the stream must expand to
 exactly the header's original size.
 
+`words2` codes the same stream with the same model and shortcuts
+([docs/stages/stage-8.md](docs/stages/stage-8.md)). While a long match runs,
+a byte may start with a flag, one decision: "the byte is the match's
+guess". If it is, the byte has no bits; if not, its bits follow, except a
+last bit the guess rules out. A byte can cost one decision instead of
+eight, so the stream may be up to 32,768 times the size of the bytes
+coding it. Its model is 4.3 MiB at level 10 and 4,236.4 MiB at 25.
+
 ## Layout
 
 | Path | Contents |
@@ -228,7 +240,7 @@ exactly the header's original size.
 | `src/coder/` | Binary arithmetic coder |
 | `src/model/` | The `Predictor` concept, the models and the parts they are built from |
 | `src/itch/` | The ITCH 5.0 schema, the order table and market state, and the message model |
-| `src/text/` | The word transform of codec 5 |
+| `src/text/` | The word transform of codecs 5 and 6 |
 | `src/codec/` | The drivers that run a model over an input: bit by bit, and message by message |
 | `src/cli/` | The `cpress` tool |
 | `tests/` | Component, golden-archive, round-trip, corruption and mutation tests |
@@ -258,6 +270,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 5 | Market data: an order-table model for exchange feeds | done, on an ITCH day file: 3.88 bytes per message, 52% under column-split + zstd (target 4.00 or better, and 45%) |
 | 6 | Write-up and release | done: [the write-up](docs/write-up.md); `enwik9` 165,953,692 bytes, and 97,522 for the decompressor |
 | 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
+| 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | in progress: `words2`, `enwik8` 18,838,765 bytes; timing waits for a quiet machine (target smaller than `words` and faster both ways) |
 
 ## Documentation
 

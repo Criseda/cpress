@@ -13,6 +13,13 @@
 // The decoder also says, after each bit, how much of the byte it knows,
 // which narrows what the model must fetch; the encoder knew it all along.
 //
+// A Flagging predictor may code a byte as one decision instead of eight:
+// before the byte it may offer a flag, "the byte is my guess", which is
+// coded like a bit. If the flag hits, the byte is done. If not, the bits
+// follow, and any bit the predictor knows already (forced_bit()) is
+// predicted and learned but not coded. Both loops do this in
+// encode_byte() and decode_byte(), which mirror each other line by line.
+//
 // Each comes in two forms. One takes a predictor the caller has constructed,
 // for models that need arguments; it must be fresh, never used before. The
 // other constructs a predictor that needs none and calls the first.
@@ -27,10 +34,12 @@
 #include "model/predictor.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 namespace cpress::codec {
 
@@ -43,6 +52,16 @@ namespace cpress::codec {
 // plus the coder::kCodeBytes the decoder already holds. No valid archive can
 // break it, so checking it never rejects one.
 inline constexpr std::uint64_t kMaxExpansion = 4096;
+
+// A Flagging predictor can code a byte as one decision, its flag, where
+// another spends eight, so a payload byte can stand for eight times as many
+// output bytes: about 22,700. Its ceiling is eight times as high.
+inline constexpr std::uint64_t kMaxFlaggedExpansion = 8 * kMaxExpansion;
+
+// The ceiling for a payload coded with P.
+template <model::Predictor P>
+inline constexpr std::uint64_t kMaxExpansionFor =
+    model::Flagging<P> ? kMaxFlaggedExpansion : kMaxExpansion;
 
 // How much output decode_bitwise reserves ahead, as a multiple of the payload
 // size. kMaxExpansion bounds what an archive may claim; this bounds what is
@@ -60,13 +79,69 @@ namespace detail {
 }
 
 // Throws unless `output_bytes` of output could come from `payload_bytes` of
-// payload, at most `max_expansion` bytes for each: kMaxExpansion for the
+// payload, at most `max_expansion` bytes for each: kMaxExpansionFor<P> for the
 // codecs here, and a ceiling of its own for a codec that codes otherwise.
 inline void require_within_expansion(std::uint64_t output_bytes, std::uint64_t payload_bytes,
                                      std::uint64_t max_expansion) {
     if (output_bytes > saturating_multiply(payload_bytes, max_expansion)) {
         throw Error("corrupt archive: header claims more data than the payload can hold");
     }
+}
+
+// The bit about to be coded, if the predictor knows it already. Only a
+// Flagging predictor can.
+template <model::Predictor P>
+[[nodiscard]] std::optional<int> forced_bit(const P& predictor) noexcept {
+    if constexpr (model::Flagging<P>) {
+        return predictor.forced_bit();
+    } else {
+        return std::nullopt;
+    }
+}
+
+// Codes `byte`: its flag, if the predictor offers one, then its bits unless
+// the flag hit.
+template <model::Predictor P>
+void encode_byte(P& predictor, coder::Encoder& encoder, std::uint8_t byte) {
+    if constexpr (model::Flagging<P>) {
+        if (predictor.offer_flag()) {
+            const int hit = byte == predictor.guess() ? 1 : 0;
+            encoder.encode(hit, predictor.predict_flag());
+            predictor.update_flag(hit);
+            if (hit != 0) return;
+        }
+    }
+    for (int shift = 7; shift >= 0; --shift) {
+        const int bit = (byte >> shift) & 1;
+        const std::uint32_t p12 = predictor.predict();
+        const std::optional<int> forced = forced_bit(predictor);
+        assert(!forced.has_value() || *forced == bit);
+        if (!forced.has_value()) encoder.encode(bit, p12);
+        predictor.update(bit);
+    }
+}
+
+// The byte encode_byte() coded, read back.
+template <model::Predictor P>
+[[nodiscard]] std::uint8_t decode_byte(P& predictor, coder::Decoder& decoder) {
+    if constexpr (model::Flagging<P>) {
+        if (predictor.offer_flag()) {
+            const std::uint32_t guess = predictor.guess();
+            const int hit = decoder.decode(predictor.predict_flag());
+            predictor.update_flag(hit);
+            if (hit != 0) return static_cast<std::uint8_t>(guess);
+        }
+    }
+    std::uint32_t byte = 0;
+    for (int bits = 1; bits <= 8; ++bits) {
+        const std::uint32_t p12 = predictor.predict();
+        const std::optional<int> forced = forced_bit(predictor);
+        const int bit = forced.has_value() ? *forced : decoder.decode(p12);
+        predictor.update(bit);
+        if constexpr (model::Prefetching<P>) predictor.prefetch_decoded(bits);
+        byte = (byte * 2) + static_cast<std::uint32_t>(bit);
+    }
+    return static_cast<std::uint8_t>(byte);
 }
 
 }  // namespace detail
@@ -85,12 +160,7 @@ void encode_bitwise(P& predictor, ByteView input, Bytes& output) {
         if constexpr (model::Prefetching<P>) {
             if (i + 1 < input.size()) predictor.prefetch_after(input[i], input[i + 1]);
         }
-        const std::uint8_t byte = input[i];
-        for (int shift = 7; shift >= 0; --shift) {
-            const int bit = (byte >> shift) & 1;
-            encoder.encode(bit, predictor.predict());
-            predictor.update(bit);
-        }
+        detail::encode_byte(predictor, encoder, input[i]);
     }
     encoder.finish();
 }
@@ -107,7 +177,7 @@ void encode_bitwise(ByteView input, Bytes& output) {
 // `predictor`, which must be freshly constructed, as the encoder's was and
 // with the same arguments. Everything here comes from an untrusted archive,
 // so it throws cpress::Error unless:
-//   1. original_size is at most kMaxExpansion times the payload size, which
+//   1. original_size is at most kMaxExpansionFor<P> times the payload size, which
 //      bounds both the work and the memory by the size of the input. This
 //      holds on entry and for what is left after every byte;
 //   2. the decoder never reads past the payload (checked once per byte);
@@ -126,10 +196,10 @@ void encode_bitwise(ByteView input, Bytes& output) {
 template <model::Predictor P>
 void decode_bitwise(P& predictor, ByteView payload, std::uint64_t original_size, Bytes& output) {
     const std::uint64_t payload_size = payload.size();
-    detail::require_within_expansion(original_size, payload_size, kMaxExpansion);
+    detail::require_within_expansion(original_size, payload_size, kMaxExpansionFor<P>);
 
     // original_size is still only a claim: a corrupt header can pass the
-    // check above and ask for kMaxExpansion times the payload. Reserve no
+    // check above and ask for kMaxExpansionFor<P> times the payload. Reserve no
     // more than kReserveExpansion times it, and let the vector grow if the
     // data really is there.
     const std::uint64_t reserve_limit =
@@ -144,20 +214,15 @@ void decode_bitwise(P& predictor, ByteView payload, std::uint64_t original_size,
         // claim at the ceiling fails here as soon as the payload is spent
         // any faster than the ceiling allows, which is within a few bytes.
         const std::uint64_t payload_left = payload_size - decoder.consumed() + coder::kCodeBytes;
-        detail::require_within_expansion(original_size - decoded, payload_left, kMaxExpansion);
+        detail::require_within_expansion(original_size - decoded, payload_left,
+                                         kMaxExpansionFor<P>);
 
         if constexpr (model::Prefetching<P>) predictor.prefetch_from_match();
-        int byte = 0;
-        for (int bit_index = 0; bit_index < 8; ++bit_index) {
-            const int bit = decoder.decode(predictor.predict());
-            predictor.update(bit);
-            if constexpr (model::Prefetching<P>) predictor.prefetch_decoded(bit_index + 1);
-            byte = (byte * 2) + bit;
-        }
+        const std::uint8_t byte = detail::decode_byte(predictor, decoder);
         if (decoder.overrun()) {
             throw Error("corrupt archive: payload ended before the data did");
         }
-        output.push_back(static_cast<std::uint8_t>(byte));
+        output.push_back(byte);
     }
 
     // Also catches an empty or short payload when there is nothing to decode.

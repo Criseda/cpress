@@ -202,14 +202,31 @@ compressing in 365 ns a byte: 43rd of 238 on the benchmark's table, and
 on its compression frontier by its own rule. On this machine mcm 0.83 is
 still 4.6% smaller and faster both ways.
 
+## Stage 8: shortcuts (in progress)
+
+Brief: [stage-8.md](stages/stage-8.md).
+
+Plan item 2 of issue #4, after mcm 0.83: work skipped where the model is
+already sure, as codec 6, `words2`.
+
+- A predicted-byte flag: while a long match runs, one decision, "the byte
+  is the match's guess", in place of eight. It is predicted from where the
+  guess was right before, and coded only when that is 95% or more.
+- The APMs skipped on bits the mixer is near certain of, and the mixer's
+  update skipped on bits it predicted within 20/4096.
+- Tag `v1.2` once it is timed on a quiet machine.
+
+The prototype made `enwik9` 0.27% smaller than codec 5, and the 30 MB
+slice 5–14% faster both ways in each round of a run on a busy machine.
+
 ## After 1.0
 
 Only if the classical design is finished and written up:
 
 - A recurrent-network mixer, which is how cmix reaches the top of the table
   at several hundred times the running time.
-- Speed beyond stage 7's profile: a block-parallel codec, a table layout
-  for the decoder, and the rest measured in issue #4.
+- Speed beyond stage 8: a block-parallel codec, a table hashed once per
+  byte (issue #19), and the rest measured in issue #4.
 - Decoder fuzzing as a permanent CI job.
 
 Whatever comes of these, the submission to the Large Text Compression

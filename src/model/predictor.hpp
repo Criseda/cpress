@@ -4,6 +4,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <optional>
 
 namespace cpress::model {
 
@@ -59,6 +60,33 @@ concept Prefetching = Predictor<P> && requires(P& p, std::uint32_t byte, int bit
     { p.prefetch_after(byte, byte) } noexcept;
     { p.prefetch_from_match() } noexcept;
     { p.prefetch_decoded(bits) } noexcept;
+};
+
+// A Predictor that can code a byte it is sure of as one decision, a flag:
+// "the byte is my guess". A byte with a flag that hits has no bits.
+//
+//   offer_flag()      at each byte boundary, before the byte: whether the
+//                     byte starts with a flag.
+//   guess()           the byte the flag claims, 0 to 255; and
+//   predict_flag()    P(the byte is the guess) as a p12. Both only after
+//                     offer_flag() returned true, and before update_flag().
+//   update_flag(hit)  the flag's outcome, 1 if the byte is the guess. On a
+//                     hit the byte is done; on a miss its bits follow.
+//   forced_bit()      before each bit: the bit, if the predictor knows it
+//                     already, because any other would make the byte the
+//                     guess a flag ruled out. A forced bit is predicted and
+//                     learned like any other, but not coded.
+//
+// The contract: offer_flag() is called at every byte boundary, so the
+// predictor may leave work to it, and both directions make the same calls
+// in the same order. All are noexcept and allocation-free.
+template <typename P>
+concept Flagging = Predictor<P> && requires(P& p, const P& c, int hit) {
+    { p.offer_flag() } noexcept -> std::same_as<bool>;
+    { c.guess() } noexcept -> std::same_as<std::uint32_t>;
+    { c.predict_flag() } noexcept -> std::same_as<std::uint32_t>;
+    { p.update_flag(hit) } noexcept -> std::same_as<void>;
+    { c.forced_bit() } noexcept -> std::same_as<std::optional<int>>;
 };
 
 }  // namespace cpress::model

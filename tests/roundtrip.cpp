@@ -13,6 +13,8 @@
 #include "model/mix6.hpp"
 #include "model/mix9.hpp"
 #include "model/order0.hpp"
+#include "model/predictor.hpp"
+#include "text/word_transform.hpp"
 
 #include <algorithm>
 #include <array>
@@ -23,6 +25,7 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <random>
 #include <string>
 #include <string_view>
@@ -196,7 +199,10 @@ void check_decode_limits(const DecodePayload& decode, std::uint64_t max_expansio
     // No overrun, even when there is nothing to decode.
     CHECK(rejects({}, 0));
     CHECK(rejects(cpress::Bytes(3, 0), 0));
-    CHECK(rejects(four_zeros, 100));  // runs out of payload
+    // Runs out of payload: no four bytes can stand for the limit, which is
+    // what makes it safe. (A smaller claim may decode: a model sure enough
+    // of what it decodes can find 100 bytes in four zeros.)
+    CHECK(rejects(four_zeros, limit));
 
     // Exact consumption: a byte too many or too few is noticed.
     cpress::Bytes decoded;
@@ -222,6 +228,18 @@ void test_decode_bitwise_limits() {
     cpress::Bytes payload;
     codec::encode_bitwise<model::Order0>(data, payload);
     check_decode_limits(decode, codec::kMaxExpansion, data, payload);
+
+    // A Flagging model is held to its own, higher limit.
+    static_assert(codec::kMaxExpansionFor<model::Mix10Flag> == codec::kMaxFlaggedExpansion);
+    const DecodePayload decode_flagged = [](cpress::ByteView coded, std::uint64_t size,
+                                            cpress::Bytes& output) {
+        model::Mix10Flag predictor(model::Mix10Flag::kMinLevel);
+        codec::decode_bitwise(predictor, coded, size, output);
+    };
+    cpress::Bytes flagged_payload;
+    model::Mix10Flag encoder(model::Mix10Flag::kMinLevel);
+    codec::encode_bitwise(encoder, data, flagged_payload);
+    check_decode_limits(decode_flagged, codec::kMaxFlaggedExpansion, data, flagged_payload);
 
     // Memory follows the payload and the bytes actually decoded, not the
     // claim. This claim is too modest to be caught early, so the decoder runs
@@ -272,15 +290,39 @@ struct AlwaysOne {
     static void update(int /*bit*/) noexcept {}
 };
 
+// The most confident Flagging model: it offers a flag on every byte, for
+// the guess 0xFF, at kProbMax. A byte costs it one decision where
+// AlwaysOne spends eight.
+struct AlwaysFlag {
+    [[nodiscard]] static std::uint32_t predict() noexcept {
+        return model::kProbMax;
+    }
+    static void update(int /*bit*/) noexcept {}
+    [[nodiscard]] static bool offer_flag() noexcept {
+        return true;
+    }
+    [[nodiscard]] static std::uint32_t guess() noexcept {
+        return 0xFF;
+    }
+    [[nodiscard]] static std::uint32_t predict_flag() noexcept {
+        return model::kProbMax;
+    }
+    static void update_flag(int /*hit*/) noexcept {}
+    [[nodiscard]] static std::optional<int> forced_bit() noexcept {
+        return std::nullopt;
+    }
+};
+static_assert(model::Flagging<AlwaysFlag>);
+
 // Codes 1 MiB of `fill` through P and checks that it expands by more than
-// `least_expansion`, stays under kMaxExpansion, and still decodes.
+// `least_expansion`, stays under P's ceiling, and still decodes.
 template <model::Predictor P>
 void check_extreme_expansion(std::uint8_t fill, std::uint64_t least_expansion) {
     const cpress::Bytes data(std::size_t{1024} * 1024, fill);
     cpress::Bytes payload;
     codec::encode_bitwise<P>(data, payload);
     CHECK(data.size() > least_expansion * payload.size());
-    CHECK(data.size() < codec::kMaxExpansion * payload.size());
+    CHECK(data.size() < codec::kMaxExpansionFor<P> * payload.size());
 
     cpress::Bytes decoded;
     CHECK(!throws_error([&] { codec::decode_bitwise<P>(payload, data.size(), decoded); }));
@@ -290,10 +332,12 @@ void check_extreme_expansion(std::uint8_t fill, std::uint64_t least_expansion) {
 // kMaxExpansion must sit above the greatest expansion a valid payload can
 // reach, or decode_bitwise would reject real archives. All-ones bytes through
 // AlwaysOne are that extreme; all-zeros bytes through order0 show how near a
-// real model comes to it.
+// real model comes to it. A Flagging model goes further, past four times
+// kMaxExpansion, and kMaxFlaggedExpansion must sit above that.
 void test_expansion_ceiling() {
     check_extreme_expansion<AlwaysOne>(0xFF, 2000);
     check_extreme_expansion<model::Order0>(0x00, 1000);
+    check_extreme_expansion<AlwaysFlag>(0xFF, 4 * codec::kMaxExpansion);
 }
 
 // The payload of a codec with a memory level for `data`, with the model at
@@ -308,6 +352,21 @@ cpress::Bytes bitwise_payload_at(const cpress::Bytes& data, int level) {
     cpress::Bytes payload{static_cast<std::uint8_t>(level)};
     Model predictor(level);
     codec::encode_bitwise(predictor, data, payload);
+    return payload;
+}
+
+// For codecs 5 and 6, which code the word stream: the level, the stream's
+// size in the 8 bytes cpress.hpp gives it, then the stream as the bitwise
+// driver codes it.
+template <model::Predictor Model>
+cpress::Bytes words_payload_at(const cpress::Bytes& data, int level) {
+    const cpress::Bytes stream = text::forward(data);
+    cpress::Bytes payload{static_cast<std::uint8_t>(level)};
+    for (int byte = 0; byte < 8; ++byte) {
+        payload.push_back(static_cast<std::uint8_t>(stream.size() >> (8 * byte)));
+    }
+    Model predictor(level);
+    codec::encode_bitwise(predictor, stream, payload);
     return payload;
 }
 
@@ -722,6 +781,8 @@ void run_roundtrip_tests(std::span<const char* const> files) {
     test_level_byte<model::Mix6>("mix6", &bitwise_payload_at<model::Mix6>);
     test_level_byte<model::Mix9>("mix9", &bitwise_payload_at<model::Mix9>);
     test_level_byte<itch::MessageModel>("itch", &message_payload_at);
+    test_level_byte<model::Mix10>("words", &words_payload_at<model::Mix10>);
+    test_level_byte<model::Mix10Flag>("words2", &words_payload_at<model::Mix10Flag>);
     test_decodes_any_level<model::Mix6>("mix6", &bitwise_payload_at<model::Mix6>);
     test_decodes_any_level<model::Mix9>("mix9", &bitwise_payload_at<model::Mix9>);
     test_decodes_any_level<itch::MessageModel>("itch", &message_payload_at);

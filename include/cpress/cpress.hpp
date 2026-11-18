@@ -48,6 +48,14 @@
 //               to exactly the original size. The decoder allocates what the
 //               level calls for, from 4.3 MiB at 10 to 4,228.4 MiB at 25,
 //               and the stream. Frozen at v1.1.
+//   6   words2  As words, with Mix10Flag, Mix10 with shortcuts. Before a
+//               byte the model may offer a flag, coded as one decision:
+//               "the byte is the match's guess". If it is, the byte has no
+//               bits; if not, its bits follow, less any bit the guess
+//               rules out. The size of the word stream may be up to 32,768
+//               times the size of the bytes coding it. The decoder
+//               allocates from 4.3 MiB at level 10 to 4,236.4 MiB at 25,
+//               and the stream. Experimental until stage 8 is tagged.
 #pragma once
 
 #include <array>

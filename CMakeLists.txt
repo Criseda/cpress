@@ -100,6 +100,7 @@ add_executable(cpress-tests
     tests/context_table_test.cpp
     tests/counter_test.cpp
     tests/field_coder_test.cpp
+    tests/flag_model_test.cpp
     tests/golden_test.cpp
     tests/history_table_test.cpp
     tests/itch_sample.cpp
