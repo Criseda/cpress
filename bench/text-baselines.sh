@@ -9,7 +9,8 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 usage: bench/text-baselines.sh [--cpu N] [--repeat K] [--scratch DIR]
-                               [--bsc PROGRAM] [--lpaq1 PROGRAM] FILE
+                               [--bsc PROGRAM] [--lpaq1 PROGRAM] [--mcm PROGRAM]
+                               [--only NAME,...] FILE
 
 Compresses and decompresses FILE with each program below, K times each way
 (default 3), on logical processor N alone (default 2), and prints one CSV
@@ -26,11 +27,12 @@ script.
   7-Zip, PPMd: -m0=PPMd:mem=1630m:o=10               one thread
   bsc -b1000 -e2                                     one thread; with --bsc
   lpaq1 9                                            with --lpaq1
+  mcm 0.83 -x11                                      with --mcm
 
 The options are the Large Text Compression Benchmark's for each program
 (https://mattmahoney.net/dc/text.html), so that a size can be checked
-against its row there. bsc and lpaq1 are built from source; pass the
-programs.
+against its row there. bsc, lpaq1 and mcm are built from source; pass
+the programs.
 
   --cpu N        the logical processor every program runs on
   --repeat K     round trips per program; the fastest of each direction counts
@@ -38,10 +40,13 @@ programs.
                  directory under $TMPDIR, removed afterwards). Use a local
                  disk: a program reading through a network or 9P mount, as
                  /mnt/c is under WSL, is timed on the mount.
+  --only NAMES   run only these programs, by the names of the CSV's first
+                 column, separated by commas: --only mcm
 
 What it costs. The scratch directory holds FILE, one archive and one
-restored copy. xz at these options needs about 11 GiB of memory. On
-enwik8, at --repeat 3, the eight programs took 25 minutes.
+restored copy. xz at these options needs about 11 GiB of memory, and
+mcm at -x11 about 6 GB. On enwik8, at --repeat 3, the first eight
+programs took 25 minutes.
 
 cpress's own rows come from cpress-bench --cpu N --repeat K FILE, in the
 same sitting.
@@ -53,6 +58,8 @@ repeat=3
 scratch=
 bsc=
 lpaq1=
+mcm=
+only=
 file=
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -61,6 +68,8 @@ while [ $# -gt 0 ]; do
         --scratch) scratch=${2:?--scratch needs a directory}; shift 2 ;;
         --bsc) bsc=${2:?--bsc needs a program}; shift 2 ;;
         --lpaq1) lpaq1=${2:?--lpaq1 needs a program}; shift 2 ;;
+        --mcm) mcm=${2:?--mcm needs a program}; shift 2 ;;
+        --only) only=${2:?--only needs program names}; shift 2 ;;
         -h | --help) usage; exit 0 ;;
         -*) usage >&2; exit 2 ;;
         *) file=$1; shift ;;
@@ -79,7 +88,7 @@ for tool in taskset /usr/bin/time gzip bzip2 zstd xz brotli 7z cmp awk; do
         exit 1
     fi
 done
-for program in "$bsc" "$lpaq1"; do
+for program in "$bsc" "$lpaq1" "$mcm"; do
     if [ -n "$program" ] && [ ! -x "$program" ]; then
         echo "text-baselines.sh: $program is not a program" >&2
         exit 1
@@ -162,6 +171,25 @@ if [ -n "$lpaq1" ]; then
     compress[lpaq1]="exec '$lpaq1' 9 \"\$1\" \"\$2\" > /dev/null"
     decompress[lpaq1]="exec '$lpaq1' d \"\$1\" \"\$2\" > /dev/null"
     version[lpaq1]='lpaq1 (Matt Mahoney, 24 July 2007)'
+fi
+if [ -n "$mcm" ]; then
+    names+=(mcm)
+    options[mcm]='-x11'
+    compress[mcm]="exec '$mcm' -x11 \"\$1\" \"\$2\" > /dev/null"
+    decompress[mcm]="exec '$mcm' d \"\$1\" \"\$2\" > /dev/null"
+    version[mcm]=$(banner 'mcm compressor' "$mcm")
+fi
+if [ -n "$only" ]; then
+    chosen=()
+    IFS=, read -r -a wanted <<< "$only"
+    for name in "${wanted[@]}"; do
+        if [ -z "${options[$name]+set}" ]; then
+            echo "text-baselines.sh: --only names $name, which is not one of: ${names[*]}" >&2
+            exit 2
+        fi
+        chosen+=("$name")
+    done
+    names=("${chosen[@]}")
 fi
 
 # Runs COMMAND with $1 and $2 set to its two files, and leaves the

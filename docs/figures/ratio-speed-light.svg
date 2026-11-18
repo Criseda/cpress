@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="734" viewBox="0 0 760 734" role="img" aria-labelledby="title desc">
 <title id="title">Where cpress sits: size against speed on enwik8</title>
-<desc id="desc">Compressed size of enwik8 in megabytes against nanoseconds per byte, compressing and decompressing, log scale: mix6 22.5 MB, 356.3 and 392.6 ns/byte; mix9 19.7 MB, 454.9 and 575.7 ns/byte; gzip 36.4 MB, 42.1 and 4.7 ns/byte; bzip2 29.0 MB, 45.4 and 23.4 ns/byte; zstd 25.3 MB, 702.1 and 1.6 ns/byte; xz 24.7 MB, 747.8 and 8.6 ns/byte; brotli 25.7 MB, 1504 and 2 ns/byte; 7-Zip PPMd 21.1 MB, 199.2 and 196.7 ns/byte; bsc 20.8 MB, 50.4 and 36.5 ns/byte; lpaq1 19.8 MB, 684 and 725.3 ns/byte; paq8px 15.8 MB, 291916 and 294847 ns/byte; nncp 14.9 MB, 241871 and 238670 ns/byte; cmix 14.6 MB, 622949 and 638442 ns/byte.</desc>
+<desc id="desc">Compressed size of enwik8 in megabytes against nanoseconds per byte, compressing and decompressing, log scale: mix6 22.5 MB, 356.3 and 392.6 ns/byte; mix9 19.7 MB, 454.9 and 575.7 ns/byte; words 18.8 MB, 366.2 and 475.5 ns/byte; gzip 36.4 MB, 42.1 and 4.7 ns/byte; bzip2 29.0 MB, 45.4 and 23.4 ns/byte; zstd 25.3 MB, 702.1 and 1.6 ns/byte; xz 24.7 MB, 747.8 and 8.6 ns/byte; brotli 25.7 MB, 1504 and 2 ns/byte; 7-Zip PPMd 21.1 MB, 199.2 and 196.7 ns/byte; bsc 20.8 MB, 50.4 and 36.5 ns/byte; lpaq1 19.8 MB, 684 and 725.3 ns/byte; mcm 18.2 MB, 377.1 and 373.4 ns/byte; paq8px 15.8 MB, 291916 and 294847 ns/byte; nncp 14.9 MB, 241871 and 238670 ns/byte; cmix 14.6 MB, 622949 and 638442 ns/byte.</desc>
 <style>text { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .num { font-variant-numeric: tabular-nums; }</style>
 <rect width="760" height="734" rx="8" fill="#fcfcfb"/>
 <text x="24" y="34" font-size="17" fill="#0b0b0b" font-weight="600">Where cpress sits: size against speed on enwik8</text>
@@ -51,6 +51,8 @@
 <circle cx="255.3" cy="266" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
 <circle cx="379.9" cy="274.7" r="5.5" fill="#fcfcfb"/>
 <circle cx="379.9" cy="274.7" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="351.4" cy="287.4" r="5.5" fill="#fcfcfb"/>
+<circle cx="351.4" cy="287.4" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
 <circle cx="669.2" cy="307.3" r="5.5" fill="#fcfcfb"/>
 <circle cx="669.2" cy="307.3" r="4.5" fill="#fcfcfb" stroke="#898781" stroke-width="2"/>
 <circle cx="660.2" cy="315" r="5.5" fill="#fcfcfb"/>
@@ -61,19 +63,23 @@
 <circle cx="348.7" cy="251.6" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
 <circle cx="360.4" cy="275.3" r="5.5" fill="#fcfcfb"/>
 <circle cx="360.4" cy="275.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
-<text x="255.7" y="139.6" font-size="12" fill="#52514e">gzip</text>
-<text x="259.3" y="201.6" font-size="12" fill="#52514e">bzip2</text>
-<text x="372.1" y="232.2" font-size="12" fill="#52514e" text-anchor="end">zstd</text>
-<text x="393.1" y="237.5" font-size="12" fill="#52514e">xz</text>
-<text x="426.5" y="228.8" font-size="12" fill="#52514e">brotli</text>
-<text x="329.9" y="267.8" font-size="12" fill="#52514e">7-Zip PPMd</text>
-<text x="264.3" y="270" font-size="12" fill="#52514e">bsc</text>
-<text x="388.9" y="278.7" font-size="12" fill="#52514e">lpaq1</text>
-<text x="669.2" y="297.3" font-size="12" fill="#52514e" text-anchor="middle">paq8px</text>
-<text x="651.2" y="319" font-size="12" fill="#52514e" text-anchor="end">nncp</text>
+<circle cx="350" cy="282.3" r="5.5" fill="#fcfcfb"/>
+<circle cx="350" cy="282.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<text x="341" y="286.3" font-size="12" fill="#0b0b0b" text-anchor="end" font-weight="600">words</text>
+<text x="368.4" y="265.3" font-size="12" fill="#0b0b0b" font-weight="600">mix9</text>
+<text x="348.7" y="241.6" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">mix6</text>
 <text x="705.4" y="307.5" font-size="12" fill="#52514e" text-anchor="middle">cmix</text>
-<text x="357.7" y="255.6" font-size="12" fill="#0b0b0b" font-weight="600">mix6</text>
-<text x="360.4" y="294.3" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">mix9</text>
+<text x="651.2" y="319" font-size="12" fill="#52514e" text-anchor="end">nncp</text>
+<text x="669.2" y="297.3" font-size="12" fill="#52514e" text-anchor="middle">paq8px</text>
+<text x="351.4" y="306.4" font-size="12" fill="#52514e" text-anchor="middle">mcm</text>
+<text x="387.9" y="293.7" font-size="12" fill="#52514e">lpaq1</text>
+<text x="264.3" y="270" font-size="12" fill="#52514e">bsc</text>
+<text x="312.9" y="253.8" font-size="12" fill="#52514e" text-anchor="end">7-Zip PPMd</text>
+<text x="426.5" y="228.8" font-size="12" fill="#52514e">brotli</text>
+<text x="393.1" y="237.5" font-size="12" fill="#52514e">xz</text>
+<text x="381.1" y="218.2" font-size="12" fill="#52514e" text-anchor="middle">zstd</text>
+<text x="259.3" y="201.6" font-size="12" fill="#52514e">bzip2</text>
+<text x="255.7" y="139.6" font-size="12" fill="#52514e">gzip</text>
 <text x="68" y="410" font-size="13" fill="#0b0b0b" font-weight="600">Decompressing</text>
 <line x1="68" y1="422" x2="68" y2="672" stroke="#e1e0d9" stroke-width="1"/>
 <text x="68" y="690" font-size="12" fill="#898781" text-anchor="middle" class="num">1</text>
@@ -120,6 +126,8 @@
 <circle cx="239.9" cy="582" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
 <circle cx="382.7" cy="590.7" r="5.5" fill="#fcfcfb"/>
 <circle cx="382.7" cy="590.7" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
+<circle cx="350.9" cy="603.4" r="5.5" fill="#fcfcfb"/>
+<circle cx="350.9" cy="603.4" r="4.5" fill="#898781" stroke="#898781" stroke-width="0"/>
 <circle cx="669.7" cy="623.3" r="5.5" fill="#fcfcfb"/>
 <circle cx="669.7" cy="623.3" r="4.5" fill="#fcfcfb" stroke="#898781" stroke-width="2"/>
 <circle cx="659.6" cy="631" r="5.5" fill="#fcfcfb"/>
@@ -130,18 +138,22 @@
 <circle cx="353.3" cy="567.6" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
 <circle cx="371.6" cy="591.3" r="5.5" fill="#fcfcfb"/>
 <circle cx="371.6" cy="591.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
-<text x="150.9" y="455.6" font-size="12" fill="#52514e">gzip</text>
-<text x="227.6" y="517.6" font-size="12" fill="#52514e">bzip2</text>
-<text x="90.5" y="563.2" font-size="12" fill="#52514e" text-anchor="middle">zstd</text>
-<text x="179.8" y="553.5" font-size="12" fill="#52514e">xz</text>
-<text x="110.1" y="544.8" font-size="12" fill="#52514e">brotli</text>
-<text x="320.3" y="598.8" font-size="12" fill="#52514e" text-anchor="middle">7-Zip PPMd</text>
-<text x="248.9" y="586" font-size="12" fill="#52514e">bsc</text>
-<text x="391.7" y="594.7" font-size="12" fill="#52514e">lpaq1</text>
-<text x="669.7" y="613.3" font-size="12" fill="#52514e" text-anchor="middle">paq8px</text>
-<text x="650.6" y="635" font-size="12" fill="#52514e" text-anchor="end">nncp</text>
+<circle cx="362.5" cy="598.3" r="5.5" fill="#fcfcfb"/>
+<circle cx="362.5" cy="598.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<text x="370.5" y="617.3" font-size="12" fill="#0b0b0b" font-weight="600">words</text>
+<text x="379.6" y="581.3" font-size="12" fill="#0b0b0b" font-weight="600">mix9</text>
+<text x="353.3" y="557.6" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">mix6</text>
 <text x="706.6" y="623.5" font-size="12" fill="#52514e" text-anchor="middle">cmix</text>
-<text x="362.3" y="571.6" font-size="12" fill="#0b0b0b" font-weight="600">mix6</text>
-<text x="371.6" y="610.3" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">mix9</text>
-<text x="68" y="716" font-size="12" fill="#898781">Filled: measured on one machine in one sitting. Hollow: the benchmark's own, timed on its machines.</text>
+<text x="650.6" y="635" font-size="12" fill="#52514e" text-anchor="end">nncp</text>
+<text x="669.7" y="613.3" font-size="12" fill="#52514e" text-anchor="middle">paq8px</text>
+<text x="341.9" y="607.4" font-size="12" fill="#52514e" text-anchor="end">mcm</text>
+<text x="391.7" y="594.7" font-size="12" fill="#52514e">lpaq1</text>
+<text x="248.9" y="586" font-size="12" fill="#52514e">bsc</text>
+<text x="312.3" y="569.8" font-size="12" fill="#52514e" text-anchor="end">7-Zip PPMd</text>
+<text x="110.1" y="544.8" font-size="12" fill="#52514e">brotli</text>
+<text x="179.8" y="553.5" font-size="12" fill="#52514e">xz</text>
+<text x="90.5" y="563.2" font-size="12" fill="#52514e" text-anchor="middle">zstd</text>
+<text x="227.6" y="517.6" font-size="12" fill="#52514e">bzip2</text>
+<text x="150.9" y="455.6" font-size="12" fill="#52514e">gzip</text>
+<text x="68" y="716" font-size="12" fill="#898781">Filled: measured on this machine, each alone on one core. Hollow: the benchmark's own, timed on its machines.</text>
 </svg>

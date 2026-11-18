@@ -67,7 +67,7 @@ Sizes on `enwik8`, from the Large Text Compression Benchmark. Its times
 are on `enwik9`, on whichever machine each program was tested on (a row
 without a note, gzip's among them, on an Athlon 64 3500+ under 32-bit
 Windows XP), so they rank programs only roughly. Stage 6 measured the programs that run in minutes
-on one machine; [the write-up](write-up.md#6-where-cpress-sits) has
+on one machine; [the write-up](write-up.md#7-where-cpress-sits) has
 those numbers.
 
 | Program | Size (MB) | Compression speed (ns/byte) | Kind |

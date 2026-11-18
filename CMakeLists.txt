@@ -61,7 +61,8 @@ add_library(cpress_core STATIC
     src/crc32.cpp
     src/io.cpp
     src/stream.cpp
-    src/table_memory.cpp)
+    src/table_memory.cpp
+    src/text/word_transform.cpp)
 target_include_directories(cpress_core PUBLIC include PRIVATE src)
 target_link_libraries(cpress_core PRIVATE cpress_warnings)
 
@@ -117,7 +118,8 @@ add_executable(cpress-tests
     tests/roundtrip.cpp
     tests/state_table_test.cpp
     tests/stream_test.cpp
-    tests/table_allocator_test.cpp)
+    tests/table_allocator_test.cpp
+    tests/word_transform_test.cpp)
 # bench/ for message_file.hpp, the benchmark tools' reader.
 target_include_directories(cpress-tests PRIVATE src bench)
 target_link_libraries(cpress-tests PRIVATE cpress_core cpress_warnings)

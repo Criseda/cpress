@@ -1,6 +1,6 @@
 # Roadmap
 
-Seven stages. Each ends with something that works and a number to publish.
+Eight stages. Each ends with something that works and a number to publish.
 A stage is finished when its exit criteria are met, not when the ideas run
 out. Time estimates assume part-time work and are guesses.
 
@@ -15,6 +15,7 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
 | 4 | Performance | same archive; compress 25%, decompress 10% faster (32%, 18%) | done |
 | 5 | Market data | 4.00 bytes per message or better; 45% under column-split + zstd (3.88; 52%) | done |
 | 6 | Release | write-up published ([write-up.md](write-up.md)) | done |
+| 7 | Text, toward the frontier | `enwik9` under 160,364,392 bytes in all, compressing under 394 ns a byte (152,011,608; 365 ns) | done |
 
 ## How stages run
 
@@ -22,8 +23,8 @@ Sizes are on `corpus/enwik8` (100,000,000 bytes) unless stated.
    interfaces, invariants, tests, exit criteria, and what is out of scope.
 2. The stage is implemented against the brief in small commits.
 3. The stage is reviewed against the checklist in `docs/style.md`.
-4. Results go into the README, the stage is tagged (`v0.N`), and the codec
-   ids it introduced are frozen.
+4. Results go into the README, the stage is tagged (`v0.N` before 1.0,
+   `v1.1` and on after it), and the codec ids it introduced are frozen.
 
 Until a stage is tagged, its codec is experimental and its output may change.
 After the tag, changed predictions mean a new codec id.
@@ -176,15 +177,39 @@ Brief: [stage-6.md](stages/stage-6.md).
 - The licence, Apache-2.0, added before the repository is made public.
 - Tag `v1.0`.
 
+## Stage 7: text, toward the frontier (done)
+
+Brief: [stage-7.md](stages/stage-7.md).
+
+At `v1.0`, cpress is 61st of 238 programs on the Large Text Compression
+Benchmark and on none of its frontiers. Under 160,364,392 bytes of
+`enwik9` in all, compressing faster than mcm 0.83's 394 ns a byte, it
+would be on the compression-time frontier.
+
+- mcm 0.83 measured on this machine, beside `mix9`.
+- A profile of `mix9`'s computation, both ways: the first question issue
+  #4 left.
+- A word transform built from the input's own words, prototyped outside
+  the repository with `mix9` behind it.
+- Codec 5: the transform and the model, with a larger level and an
+  order-7 table if they pay for their time.
+- Tag `v1.1`.
+
+Done: codec 5, `words`, a dictionary of the input's own words in front of
+`Mix10`, `mix9`'s model with an order-7 table and a largest level of 25.
+`enwik9` is 151,906,618 bytes, 152,011,608 with the source zipped,
+compressing in 365 ns a byte: 43rd of 238 on the benchmark's table, and
+on its compression frontier by its own rule. On this machine mcm 0.83 is
+still 4.6% smaller and faster both ways.
+
 ## After 1.0
 
 Only if the classical design is finished and written up:
 
 - A recurrent-network mixer, which is how cmix reaches the top of the table
   at several hundred times the running time.
-- Dictionary preprocessing for text.
-- Speed beyond stage 4: the computation, a block-parallel codec, and the
-  rest measured in issue #4.
+- Speed beyond stage 7's profile: a block-parallel codec, a table layout
+  for the decoder, and the rest measured in issue #4.
 - Decoder fuzzing as a permanent CI job.
 
 Whatever comes of these, the submission to the Large Text Compression

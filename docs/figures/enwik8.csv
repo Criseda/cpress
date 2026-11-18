@@ -10,9 +10,14 @@
 # the others to better than a factor of a few.
 # order0 was measured in the sitting too (61,263,585 bytes, 27.5 and 32.3
 # ns/byte) and is left out of the figure, where it would quadruple the range.
+# Two rows are from stage 7's sittings, on 18 November 2026, the same machine
+# and the same way: mcm 0.83 at 02b4e7d, built by its make.sh, by
+# bench/text-baselines.sh --mcm (at f7a2e75); words, codec 5, by
+# cpress-bench --codec words --cpu 2 --repeat 3 at 85aaec9, GCC 13.3.
 label,cpress,source,version,options,bytes,compress_ns_per_byte,decompress_ns_per_byte
 mix6,yes,here,cpress d396ace,--codec mix6,22527170,356.3,392.6
 mix9,yes,here,cpress d396ace,--codec mix9,19687838,454.9,575.7
+words,yes,here,cpress 85aaec9,--codec words,18846644,366.2,475.5
 gzip,no,here,gzip 1.12,-9,36445247,42.1,4.7
 bzip2,no,here,bzip2 1.0.8,-9,29008758,45.4,23.4
 zstd,no,here,zstd 1.5.5,--ultra -22,25333695,702.1,1.6
@@ -21,6 +26,7 @@ brotli,no,here,brotli 1.1.0,-q 11 -w 24,25742001,1504.0,2.0
 7-Zip PPMd,no,here,7-Zip 23.01,-m0=PPMd:mem=1630m:o=10,21060855,199.2,196.7
 bsc,no,here,bsc 3.4.0,-b1000 -e2 -T,20803016,50.4,36.5
 lpaq1,no,here,lpaq1 (24 July 2007),9,19755948,684.0,725.3
+mcm,no,here,mcm 0.83 (02b4e7d),-x11,18234412,377.1,373.4
 paq8px,no,ltcb,paq8px_v206fix1,-12L,15849084,291916,294847
 nncp,no,ltcb,nncp v3.2,,14915298,241871,238670
 cmix,no,ltcb,cmix v21,-t,14623723,622949,638442

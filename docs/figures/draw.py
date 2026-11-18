@@ -336,8 +336,9 @@ class Point:
 
 def place_labels(points, to_xy, box_of_point, area):
     """Puts each label beside its point, inside AREA, where it overlaps no
-    point and no label placed before it: right, left, above or below, in that
-    order of preference."""
+    point and no label placed before it: right, left, above, below, then
+    the four corners, in that order of preference. Labels are placed in the
+    order of POINTS."""
     taken = [box_of_point(*to_xy(p)) for p in points]
     placed = []
     for p in points:
@@ -348,6 +349,10 @@ def place_labels(points, to_xy, box_of_point, area):
             (x - 9, y + 4, "end", (x - 10 - w, y - 8, x - 8, y + 6)),
             (x, y - 10, "middle", (x - w / 2, y - 22, x + w / 2, y - 8)),
             (x, y + 19, "middle", (x - w / 2, y + 7, x + w / 2, y + 21)),
+            (x + 8, y - 10, "start", (x + 7, y - 22, x + 9 + w, y - 8)),
+            (x + 8, y + 19, "start", (x + 7, y + 7, x + 9 + w, y + 21)),
+            (x - 8, y - 10, "end", (x - 9 - w, y - 22, x - 7, y - 8)),
+            (x - 8, y + 19, "end", (x - 9 - w, y + 7, x - 7, y + 21)),
         ]
         chosen = candidates[0]
         for candidate in candidates:
@@ -399,7 +404,8 @@ def scatter_panel(svg, top, height, points, title, y_low, y_high):
     for p in ordered:
         x, y = to_xy(p)
         svg.dot(x, y, t.accent if p.accent else t.other, hollow=p.hollow)
-    placed = place_labels(ordered, to_xy,
+    # cpress's labels first, so that they take the nearest free places.
+    placed = place_labels(ordered[::-1], to_xy,
                           lambda x, y: (x - DOT - 2, y - DOT - 2, x + DOT + 2, y + DOT + 2),
                           (x0 + 2, top, x1, bottom))
     for p, x, y, anchor in placed:
@@ -432,8 +438,8 @@ def ratio_speed(theme):
     svg.heading(title, subtitle)
     scatter_panel(svg, first_top, panel, compress, "Compressing", y_low, y_high)
     scatter_panel(svg, second_top, panel, decompress, "Decompressing", y_low, y_high)
-    svg.text(PAD + 44, height - 18, "Filled: measured on one machine in one sitting. Hollow: "
-             "the benchmark's own, timed on its machines.", theme.muted, size=12)
+    svg.text(PAD + 44, height - 18, "Filled: measured on this machine, each alone on one core. "
+             "Hollow: the benchmark's own, timed on its machines.", theme.muted, size=12)
     return svg
 
 
