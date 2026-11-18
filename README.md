@@ -246,12 +246,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/write-up.md](docs/write-up.md) | How cpress works, what each part is worth, and every measurement |
 | [docs/idea.md](docs/idea.md) | Why the project exists, how context mixing works, goals and non-goals |
 | [docs/roadmap.md](docs/roadmap.md) | Every stage in detail, with exit criteria |
-| [docs/stage-1.md](docs/stage-1.md) | The brief for stage 1 |
-| [docs/stage-2.md](docs/stage-2.md) | The brief for stage 2 |
-| [docs/stage-3.md](docs/stage-3.md) | The brief for stage 3 |
-| [docs/stage-4.md](docs/stage-4.md) | The brief for stage 4 |
-| [docs/stage-5.md](docs/stage-5.md) | The brief for stage 5 |
-| [docs/stage-6.md](docs/stage-6.md) | The brief for stage 6 |
+| `docs/stage-N.md`: [1](docs/stage-1.md), [2](docs/stage-2.md), [3](docs/stage-3.md), [4](docs/stage-4.md), [5](docs/stage-5.md), [6](docs/stage-6.md) | The design record, a brief for each stage: the plan, the alternatives measured and the one chosen, the exit criteria, and every departure from the plan with its reason. Stage 3's sets out the bit-history states and stage 5's the `itch` model, which the code cites |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
 
 ## Licence
