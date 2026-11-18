@@ -30,6 +30,7 @@
 
 #include "model/logistic.hpp"
 #include "model/predictor.hpp"
+#include "model/prefetch.hpp"
 #include "model/table_allocator.hpp"
 
 #include <algorithm>
@@ -142,6 +143,18 @@ public:
         const std::int32_t next = p16 + ((target - p16) >> kApmRate);
         assert(next >= 0 && next <= detail::kP16Max);
         points_[nearest_] = static_cast<std::uint16_t>(next);
+    }
+
+    // Starts loading the curve of `context` into the cache, for a refine()
+    // to come. A hint: it changes nothing in the map. Which two points
+    // refine() reads depends on a probability not yet known, so the whole
+    // curve is asked for: 66 bytes from an even address, so its first point
+    // and its last are on the only two cache lines it can touch.
+    void prefetch(std::size_t context) const noexcept {
+        assert(context < points_.size() / kPoints);
+        const std::size_t first = context * kPoints;
+        model::prefetch(&points_[first]);
+        model::prefetch(&points_[first + kPoints - 1]);
     }
 
     // A point of a context's curve. For tests.

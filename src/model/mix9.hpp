@@ -296,6 +296,10 @@ public:
     // ignores the attribute; its loops were not slowed.
     [[gnu::noinline]] void update(int bit) noexcept {
         assert(bit == 0 || bit == 1);
+        // The second APM's curves are 4 MiB, read at a place each bit moves,
+        // and the bit has just decided the next: fetch it now, an update's
+        // work before predict() reads it. A hint; it changes nothing.
+        by_previous_byte_.prefetch(next_previous_byte_context(bit));
         mixer_.update(bit);  // from its own output, not the refined one
         by_partial_byte_.update(bit);
         by_previous_byte_.update(bit);
@@ -400,6 +404,17 @@ private:
     [[nodiscard]] static constexpr std::uint64_t with_marker(std::uint64_t key,
                                                              std::uint32_t marker) noexcept {
         return (key << kMarkerBits) | marker;
+    }
+
+    // The second APM's context for the bit after `bit`: the partial byte
+    // with `bit` in it and the previous byte, or, if `bit` ends a byte, an
+    // empty partial byte and that byte. predict() computes the same context
+    // from the state update() leaves.
+    [[nodiscard]] std::size_t next_previous_byte_context(int bit) const noexcept {
+        const std::uint32_t partial = (partial_ * 2) + static_cast<std::uint32_t>(bit);
+        if (partial >= kByteDone) return 1 + (kByteDone * (partial - kByteDone));
+        const std::uint32_t previous_byte = static_cast<std::uint32_t>(context_.history) & 0xFF;
+        return partial + (kByteDone * previous_byte);
     }
 
     // Points every table at its slot for the nibble about to be coded.
