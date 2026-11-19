@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
     run_match_model_tests();
     run_apm_tests();
     run_mix9_tests();
+    run_flag_model_tests();
     run_golden_tests();
     run_itch_schema_tests();
     run_residual_tests();

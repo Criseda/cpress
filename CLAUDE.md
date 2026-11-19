@@ -24,8 +24,8 @@ the current stage before implementing anything. Both are binding.
 ## Where things stand
 
 Stages 0 to 7 are done and tagged (`v0.1` to `v0.5`, then `v1.0` and
-`v1.1`); codecs 1 to 5 are frozen. What comes next is in the roadmap's
-"After 1.0", and needs a brief of its own.
+`v1.1`); codecs 1 to 5 are frozen. Stage 8 (`docs/stages/stage-8.md`) is
+done and waits for its tag, `v1.2`, which freezes codec 6, `words2`.
 Update this line and the README roadmap when a stage is tagged.
 Stage targets are sizes on `corpus/enwik8` (100 MB), stage 5's on an ITCH
 day file (8.25 GB) and stage 7's on `enwik9` (1 GB); see `corpus/README.md`.

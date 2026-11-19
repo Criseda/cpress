@@ -123,6 +123,7 @@ void run_history_table_tests();
 void run_match_model_tests();
 void run_apm_tests();
 void run_mix9_tests();
+void run_flag_model_tests();
 void run_golden_tests();
 void run_itch_schema_tests();
 void run_residual_tests();

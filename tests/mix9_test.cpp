@@ -1,8 +1,11 @@
 // Mix9 tests: valid predictions on any input, determinism, the level
 // arithmetic, and the hints: they change no prediction, and the keys they
-// fetch for are the keys the model then selects.
+// fetch for are the keys the model then selects. Then Mix10Flag's
+// shortcuts: when the flag is offered, what a hit and a miss do, and that
+// the hints change no byte of its output either.
 #include "check.hpp"
 
+#include "codec/bitwise.hpp"
 #include "model/context_table.hpp"
 #include "model/history_table.hpp"
 #include "model/mix9.hpp"
@@ -21,6 +24,7 @@ namespace cpress::test {
 namespace {
 
 using model::Mix10;
+using model::Mix10Flag;
 using model::Mix9;
 
 static_assert(model::Predictor<Mix9>);
@@ -48,6 +52,15 @@ static_assert(Mix10::memory_bytes(23) == 1'162'280'020);
 static_assert(Mix10::memory_bytes(24) == 2'252'799'060);
 static_assert(Mix10::memory_bytes(25) == 4'433'837'140);
 static_assert(Mix10::table_slot_bits(Mix10::kTables - 1, 24) == 24);
+
+// Mix10Flag, codec 6's model: Mix10 with shortcuts, whose flag tables have
+// an eighth of a history table's slots each.
+static_assert(Mix10Flag::kTables == Mix10::kTables && Mix10Flag::kMaxLevel == Mix10::kMaxLevel);
+static_assert(Mix10Flag::flag_table_bits(Mix10Flag::kMaxLevel) == 22);
+static_assert(Mix10Flag::memory_bytes(25) ==
+              Mix10::memory_bytes(25) + model::FlagModel::memory_bytes(22));
+static_assert(Mix10Flag::memory_bytes(10) == 4'559'804);
+static_assert(Mix10Flag::memory_bytes(25) == 4'442'229'436);
 
 // table_slot_bits: orders 1 and 2 capped, the rest at the level.
 static_assert(Mix9::table_slot_bits(0, Mix9::kMaxLevel) == 14);
@@ -292,6 +305,171 @@ void test_decoded_candidates_are_the_keys_used() {
     }
 }
 
+// Text one sentence long, repeated: after its first few copies a long
+// match predicts every byte.
+cpress::Bytes repeated_sentence(std::size_t count) {
+    constexpr std::string_view kSentence = "The match model has seen this sentence before. ";
+    cpress::Bytes text;
+    while (text.size() < count) text.insert(text.end(), kSentence.begin(), kSentence.end());
+    text.resize(count);
+    return text;
+}
+
+// What a flag did over some input.
+struct FlagCount {
+    std::size_t offered = 0;
+    std::size_t hits = 0;
+    bool in_range = true;  // every prediction, of a bit or a flag, was a valid p12
+};
+
+// Codes `data` through `model` as the bitwise driver does, without a
+// coder: the flag where one is offered, then the byte's bits unless it hit.
+FlagCount drive(Mix10Flag& model, cpress::ByteView data) {
+    const auto valid = [](std::uint32_t p12) {
+        return p12 >= model::kProbMin && p12 <= model::kProbMax;
+    };
+    FlagCount count;
+    for (const std::uint8_t byte : data) {
+        if (model.offer_flag()) {
+            ++count.offered;
+            count.in_range = count.in_range && valid(model.predict_flag());
+            const int hit = byte == model.guess() ? 1 : 0;
+            count.hits += static_cast<std::size_t>(hit);
+            model.update_flag(hit);
+            if (hit != 0) continue;
+        }
+        for (int shift = 7; shift >= 0; --shift) {
+            count.in_range = count.in_range && valid(model.predict());
+            model.update((byte >> shift) & 1);
+        }
+    }
+    return count;
+}
+
+// The flag waits for a long match. Random bytes have none, so no flag is
+// ever offered; a repeated sentence has one running almost throughout, and
+// most of its bytes are coded as a flag that hits.
+void test_flag_waits_for_a_long_match() {
+    Mix10Flag on_noise(Mix10Flag::kMinLevel);
+    const FlagCount noise = drive(on_noise, random_bytes(65536, 0xF1A6));
+    CHECK(noise.offered == 0);
+    CHECK(noise.in_range);
+
+    Mix10Flag on_text(Mix10Flag::kMinLevel);
+    const cpress::Bytes text = repeated_sentence(65536);
+    const FlagCount sentence = drive(on_text, text);
+    CHECK(sentence.hits > text.size() / 2);
+    CHECK(sentence.in_range);
+}
+
+// A model driven over the repeated sentence until it offers a flag, which
+// is not yet answered.
+struct Offered {
+    Mix10Flag model{Mix10Flag::kMinLevel};
+    std::uint32_t guess = 0;
+
+    Offered() {
+        const cpress::Bytes text = repeated_sentence(65536);
+        for (const std::uint8_t byte : text) {
+            if (model.offer_flag()) {
+                guess = model.guess();
+                return;
+            }
+            for (int shift = 7; shift >= 0; --shift) {
+                static_cast<void>(model.predict());
+                model.update((byte >> shift) & 1);
+            }
+        }
+    }
+};
+
+// A hit is the whole byte: the model's context moves on by the guess, and
+// the next byte starts at a byte boundary, where a flag can be offered.
+void test_flag_hit_is_the_whole_byte() {
+    Offered offered;
+    const std::uint64_t before = offered.model.context().history;
+    offered.model.update_flag(1);
+    CHECK(offered.model.context().history == ((before << 8) | offered.guess));
+    static_cast<void>(offered.model.offer_flag());
+}
+
+// After a miss, the byte is not the guess. If its first seven bits are
+// the guess's, the eighth is forced to the other value, and no other bit
+// ever is.
+void test_miss_forces_only_the_last_bit() {
+    for (const std::uint32_t differ : {1U, 0x80U}) {
+        Offered offered;
+        Mix10Flag& model = offered.model;
+        model.update_flag(0);
+        const std::uint32_t byte = offered.guess ^ differ;
+        bool forced_as_expected = true;
+        for (int shift = 7; shift >= 0; --shift) {
+            const int bit = static_cast<int>((byte >> shift) & 1);
+            const bool last_and_close = shift == 0 && differ == 1;
+            const std::optional<int> forced = model.forced_bit();
+            forced_as_expected = forced_as_expected && forced.has_value() == last_and_close &&
+                                 (!forced.has_value() || *forced == bit);
+            static_cast<void>(model.predict());
+            model.update(bit);
+        }
+        CHECK(forced_as_expected);
+        CHECK(!model.forced_bit().has_value());  // exclusion ends with the byte
+    }
+}
+
+// Mix10Flag without its hints: Flagging, but not Prefetching, so the
+// driver gives it none.
+class Unhinted {
+public:
+    explicit Unhinted(int level) : model_(level) {}
+    [[nodiscard]] std::uint32_t predict() noexcept {
+        return model_.predict();
+    }
+    void update(int bit) noexcept {
+        model_.update(bit);
+    }
+    [[nodiscard]] bool offer_flag() noexcept {
+        return model_.offer_flag();
+    }
+    [[nodiscard]] std::uint32_t guess() const noexcept {
+        return model_.guess();
+    }
+    [[nodiscard]] std::uint32_t predict_flag() const noexcept {
+        return model_.predict_flag();
+    }
+    void update_flag(int hit) noexcept {
+        model_.update_flag(hit);
+    }
+    [[nodiscard]] std::optional<int> forced_bit() const noexcept {
+        return model_.forced_bit();
+    }
+
+private:
+    Mix10Flag model_;
+};
+static_assert(model::Flagging<Unhinted> && !model::Prefetching<Unhinted>);
+
+// The hints change no byte. The driver gives Mix10Flag every hint, and its
+// flag a prefetch of its own; without them it codes the same payload, and
+// each decodes the other's.
+void test_flag_hints_change_no_byte() {
+    for (const cpress::Bytes& data :
+         {repeated_sentence(16384), sample_text(16384), random_bytes(4096, 0x41)}) {
+        cpress::Bytes hinted;
+        Mix10Flag encoder(Mix10Flag::kMinLevel);
+        codec::encode_bitwise(encoder, data, hinted);
+        cpress::Bytes plain;
+        Unhinted plain_encoder(Mix10Flag::kMinLevel);
+        codec::encode_bitwise(plain_encoder, data, plain);
+        CHECK(hinted == plain);
+
+        cpress::Bytes decoded;
+        Unhinted decoder(Mix10Flag::kMinLevel);
+        codec::decode_bitwise(decoder, hinted, data.size(), decoded);
+        CHECK(decoded == data);
+    }
+}
+
 }  // namespace
 
 void run_mix9_tests() {
@@ -302,6 +480,10 @@ void run_mix9_tests() {
     test_hints_change_no_prediction();
     test_prefetched_keys_are_the_keys_used();
     test_decoded_candidates_are_the_keys_used();
+    test_flag_waits_for_a_long_match();
+    test_flag_hit_is_the_whole_byte();
+    test_miss_forces_only_the_last_bit();
+    test_flag_hints_change_no_byte();
 }
 
 }  // namespace cpress::test

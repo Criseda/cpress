@@ -38,7 +38,7 @@ void stored_decode(ByteView payload, std::uint64_t original_size, Bytes& output)
     output.insert(output.end(), payload.begin(), payload.end());
 }
 
-// Codecs 2 to 5: models with a memory level. The payload starts with one byte,
+// Codecs 2 to 6: models with a memory level. The payload starts with one byte,
 // the level, then what the codec's driver writes. The encoder chooses the level
 // from the input size; the decoder uses whatever level the archive states,
 // so it never needs to know how the encoder chose. That choice is the only
@@ -152,20 +152,23 @@ void itch_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
     itch_decode_stream(payload, original_size, sink);
 }
 
-// Codec 5: the word transform, then Mix10, mix9's model with an order-7
-// table and a level up to 25, on the stream it writes. The payload is the
-// model's level for the stream, the stream's size in 8 bytes,
+// Codecs 5 and 6: the word transform, then a model on the stream it
+// writes: Mix10, mix9's model with an order-7 table and a level up to 25,
+// for codec 5; Mix10Flag, the same with shortcuts, for codec 6. The payload
+// is the model's level for the stream, the stream's size in 8 bytes,
 // little-endian, then the stream as the bitwise driver codes bytes. The
 // level and the size are untrusted, like everything else in it: the level
-// is checked against Mix10's limits, decode_bitwise holds the size to the
-// payload, and text::inverse holds the stream to the original size.
+// is checked against the model's limits, decode_bitwise holds the size to
+// the payload, and text::inverse holds the stream to the original size.
 constexpr std::string_view kWordsName = "words";
+constexpr std::string_view kWordsFlagName = "words2";
 constexpr std::size_t kStreamSizeBytes = 8;
 
+template <LevelledModel Model, const std::string_view& Name>
 void words_encode(ByteView input, Bytes& output) {
     const Bytes stream = text::forward(input);
-    const int level = model::Mix10::level_for_size(stream.size());
-    auto predictor = make_levelled_model<model::Mix10, kWordsName>(level);
+    const int level = Model::level_for_size(stream.size());
+    auto predictor = make_levelled_model<Model, Name>(level);
     output.push_back(static_cast<std::uint8_t>(level));
     const std::uint64_t size = stream.size();
     for (std::size_t i = 0; i < kStreamSizeBytes; ++i) {
@@ -174,16 +177,18 @@ void words_encode(ByteView input, Bytes& output) {
     codec::encode_bitwise(predictor, stream, output);
 }
 
+template <LevelledModel Model, const std::string_view& Name>
 void words_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
-    const int level = level_of<model::Mix10, kWordsName>(payload);
+    const int level = level_of<Model, Name>(payload);
     if (payload.size() < 1 + kStreamSizeBytes) {
-        throw Error("corrupt archive: words payload ends inside the stream size");
+        throw Error("corrupt archive: " + std::string(Name) +
+                    " payload ends inside the stream size");
     }
     std::uint64_t size = 0;
     for (std::size_t i = 0; i < kStreamSizeBytes; ++i) {
         size |= std::uint64_t{payload[1 + i]} << (8 * i);
     }
-    auto predictor = make_levelled_model<model::Mix10, kWordsName>(level);
+    auto predictor = make_levelled_model<Model, Name>(level);
     Bytes stream;
     codec::decode_bitwise(predictor, payload.subspan(1 + kStreamSizeBytes), size, stream);
     text::inverse(stream, original_size, output);
@@ -194,7 +199,7 @@ constexpr std::uint8_t kDefaultCodecId = 3;
 
 // New codecs are added here. Ids are part of the file format: never reuse
 // or renumber one once an archive using it could exist.
-constexpr std::array<Codec, 6> kCodecs{{
+constexpr std::array<Codec, 7> kCodecs{{
     {.id = 0,
      .name = "stored",
      .summary = "no compression (stage 0 placeholder)",
@@ -233,8 +238,14 @@ constexpr std::array<Codec, 6> kCodecs{{
     {.id = 5,
      .name = kWordsName,
      .summary = "a dictionary of the input's words, then mix9 with order 7",
-     .encode = &words_encode,
-     .decode = &words_decode},
+     .encode = &words_encode<model::Mix10, kWordsName>,
+     .decode = &words_decode<model::Mix10, kWordsName>},
+    // Codec 6: experimental until stage 8 is tagged.
+    {.id = 6,
+     .name = kWordsFlagName,
+     .summary = "words, with a predicted-byte flag and skipped work",
+     .encode = &words_encode<model::Mix10Flag, kWordsFlagName>,
+     .decode = &words_decode<model::Mix10Flag, kWordsFlagName>},
 }};
 
 // The default is one of them.

@@ -10,14 +10,17 @@
 # the others to better than a factor of a few.
 # order0 was measured in the sitting too (61,263,585 bytes, 27.5 and 32.3
 # ns/byte) and is left out of the figure, where it would quadruple the range.
-# Two rows are from stage 7's sittings, on 18 November 2026, the same machine
-# and the same way: mcm 0.83 at 02b4e7d, built by its make.sh, by
-# bench/text-baselines.sh --mcm (at f7a2e75); words, codec 5, by
-# cpress-bench --codec words --cpu 2 --repeat 3 at 85aaec9, GCC 13.3.
+# mcm is from stage 7's sitting, on 18 November 2026, the same machine and
+# the same way: mcm 0.83 at 02b4e7d, built by its make.sh, by
+# bench/text-baselines.sh --mcm (at f7a2e75). words and words2, codecs 5
+# and 6, are from stage 8's, on 19 November 2026, the same way: by
+# cpress-bench --codec words --cpu 2 --repeat 3 and --codec words2 at
+# 6f3e520, GCC 13.3.
 label,cpress,source,version,options,bytes,compress_ns_per_byte,decompress_ns_per_byte
 mix6,yes,here,cpress d396ace,--codec mix6,22527170,356.3,392.6
 mix9,yes,here,cpress d396ace,--codec mix9,19687838,454.9,575.7
-words,yes,here,cpress 85aaec9,--codec words,18846644,366.2,475.5
+words,yes,here,cpress 6f3e520,--codec words,18846644,374.1,475.9
+words2,yes,here,cpress 6f3e520,--codec words2,18838765,337.2,457.9
 gzip,no,here,gzip 1.12,-9,36445247,42.1,4.7
 bzip2,no,here,bzip2 1.0.8,-9,29008758,45.4,23.4
 zstd,no,here,zstd 1.5.5,--ultra -22,25333695,702.1,1.6

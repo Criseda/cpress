@@ -20,9 +20,10 @@ right.
 The same engine compresses two kinds of data. Given English text, it is a
 general model in the class of Matt Mahoney's lpaq1: 19.7 MB of `enwik8`,
 the first 100 MB of Wikipedia, a little smaller than lpaq1 itself. Told
-what a word is, and given an order-7 table and more memory, the same
-engine makes 18.8 MB of it, and 151.9 MB of the first gigabyte: 8.5% less
-than the byte model, in less time. Given a
+what a word is, and given an order-7 table, more memory and a few
+shortcuts where it is already sure, the same engine makes 18.8 MB of it,
+and 151.5 MB of the first gigabyte: 8.7% less than the byte model, in
+two-thirds of the time. Given a
 day of NASDAQ's ITCH market feed, it is a model that knows what an order
 is. It keeps every live order the messages describe, names an order by its
 place among its stock's recent orders instead of by its 64-bit number, and
@@ -49,8 +50,8 @@ Compression Benchmark's own, timed on other machines.*
 
 | Input | cpress | For comparison | Record |
 |---|---|---|---|
-| `enwik8`, the first 100 MB of English Wikipedia | **18,846,644 bytes**, 1.508 bits a byte (`words`) | `mix9`: 19,687,838. lpaq1: 19,755,948, and slower on the same machine | [stage 7](docs/write-up.md#stage-7-codec-5-words) |
-| `enwik9`, the first 1 GB | **151,906,618 bytes**, 1.215 bits a byte (`words`) | `mix9`: 165,953,692. mcm 0.83: 144,854,575, and faster | [stage 7](docs/write-up.md#stage-7-codec-5-words) |
+| `enwik8`, the first 100 MB of English Wikipedia | **18,838,765 bytes**, 1.507 bits a byte (`words2`) | `mix9`: 19,687,838. lpaq1: 19,755,948, and slower on the same machine | [stage 8](docs/write-up.md#stage-8-codec-6-words2) |
+| `enwik9`, the first 1 GB | **151,497,460 bytes**, 1.212 bits a byte (`words2`) | `mix9`: 165,953,692. mcm 0.83: 144,854,575, slower compressing and faster decompressing | [stage 8](docs/write-up.md#stage-8-codec-6-words2) |
 | A NASDAQ ITCH day, 8.25 GB, 268,744,780 messages | **3.884 bytes a message** (`itch`) | Every field a column, each `zstd -19`: 8.036. `xz -9`: 9.261 | [stage 5](docs/write-up.md#stage-5-market-data) |
 | Another day, not used in design | **3.843 bytes a message** | The columns: 7.901 | [stage 5](docs/write-up.md#stage-5-market-data) |
 
@@ -58,7 +59,7 @@ Compression Benchmark's own, timed on other machines.*
 what each part is worth, where cpress sits among other compressors, and
 every measurement with the commit that made it.
 
-## Six codecs
+## Seven codecs
 
 - `stored` does not compress.
 - `order0`: the arithmetic coder and an order-0 model, stage 1.
@@ -73,6 +74,9 @@ every measurement with the commit that made it.
 - `words`: text with its frequent words replaced by codes from a dictionary
   of the input's own words, then `mix9`'s model with an order-7 table and
   four times the memory. Stage 7; asked for by name, `--codec words`.
+- `words2`: `words` with shortcuts. A byte the match model is sure of is
+  coded as one decision, and the APMs and the mixer skip bits the model is
+  already sure of. Stage 8, experimental; `--codec words2`.
 
 ## Build
 
@@ -176,6 +180,7 @@ match the header.
 | 3 | `mix9` | As `mix6`, with a level of 10 to 23 (frozen at `v0.3`) |
 | 4 | `itch` | One byte, the model's memory level, 10 to 23; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.5`) |
 | 5 | `words` | One byte, the model's memory level, 10 to 25; the size of the word stream, 8 bytes; then arithmetic-coded bits and 4 flush bytes (frozen at `v1.1`) |
+| 6 | `words2` | As `words`, with a flag before some bytes (experimental) |
 
 `order0`, `mix6` and `mix9` code each byte most significant bit first. Every bit is
 coded with a 12-bit probability P(bit = 1) from the model, by a carryless
@@ -219,6 +224,14 @@ is coded as `mix9` codes bytes, with an order-7 table too and levels up to
 every field of the stream as it reads it, and the stream must expand to
 exactly the header's original size.
 
+`words2` codes the same stream with the same model and shortcuts
+([docs/stages/stage-8.md](docs/stages/stage-8.md)). While a long match runs,
+a byte may start with a flag, one decision: "the byte is the match's
+guess". If it is, the byte has no bits; if not, its bits follow, except a
+last bit the guess rules out. A byte can cost one decision instead of
+eight, so the stream may be up to 32,768 times the size of the bytes
+coding it. Its model is 4.3 MiB at level 10 and 4,236.4 MiB at 25.
+
 ## Layout
 
 | Path | Contents |
@@ -228,7 +241,7 @@ exactly the header's original size.
 | `src/coder/` | Binary arithmetic coder |
 | `src/model/` | The `Predictor` concept, the models and the parts they are built from |
 | `src/itch/` | The ITCH 5.0 schema, the order table and market state, and the message model |
-| `src/text/` | The word transform of codec 5 |
+| `src/text/` | The word transform of codecs 5 and 6 |
 | `src/codec/` | The drivers that run a model over an input: bit by bit, and message by message |
 | `src/cli/` | The `cpress` tool |
 | `tests/` | Component, golden-archive, round-trip, corruption and mutation tests |
@@ -258,6 +271,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 5 | Market data: an order-table model for exchange feeds | done, on an ITCH day file: 3.88 bytes per message, 52% under column-split + zstd (target 4.00 or better, and 45%) |
 | 6 | Write-up and release | done: [the write-up](docs/write-up.md); `enwik9` 165,953,692 bytes, and 97,522 for the decompressor |
 | 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
+| 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | done: `words2`, `enwik9` 151,497,460 bytes and 112,714 for the decompressor, compressing 18% and decompressing 14% faster than `words` (target smaller than `words` and faster both ways) |
 
 ## Documentation
 
@@ -266,7 +280,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/write-up.md](docs/write-up.md) | How cpress works, what each part is worth, and every measurement |
 | [docs/idea.md](docs/idea.md) | Why the project exists, how context mixing works, goals and non-goals |
 | [docs/roadmap.md](docs/roadmap.md) | Every stage in detail, with exit criteria |
-| `docs/stages/stage-N.md`: [1](docs/stages/stage-1.md), [2](docs/stages/stage-2.md), [3](docs/stages/stage-3.md), [4](docs/stages/stage-4.md), [5](docs/stages/stage-5.md), [6](docs/stages/stage-6.md), [7](docs/stages/stage-7.md) | The design record, a brief for each stage: the plan, the alternatives measured and the one chosen, the exit criteria, and every departure from the plan with its reason. Stage 3's sets out the bit-history states and stage 5's the `itch` model, which the code cites |
+| `docs/stages/stage-N.md`: [1](docs/stages/stage-1.md), [2](docs/stages/stage-2.md), [3](docs/stages/stage-3.md), [4](docs/stages/stage-4.md), [5](docs/stages/stage-5.md), [6](docs/stages/stage-6.md), [7](docs/stages/stage-7.md), [8](docs/stages/stage-8.md) | The design record, a brief for each stage: the plan, the alternatives measured and the one chosen, the exit criteria, and every departure from the plan with its reason. Stage 3's sets out the bit-history states and stage 5's the `itch` model, which the code cites |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
 
 ## Licence
