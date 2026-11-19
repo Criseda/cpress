@@ -55,7 +55,7 @@
 //               rules out. The size of the word stream may be up to 32,768
 //               times the size of the bytes coding it. The decoder
 //               allocates from 4.3 MiB at level 10 to 4,236.4 MiB at 25,
-//               and the stream. Experimental until stage 8 is tagged.
+//               and the stream. Frozen at v1.2.
 #pragma once
 
 #include <array>

@@ -268,7 +268,8 @@ right was twice as high on `enwik9` as on `enwik8`.
 - [x] `enwik9` timed for codec 6, and the write-up, the README and the
       roadmap updated. *Section 4, and the write-up's sections 6 and 7 and
       appendix.*
-- [ ] Tag `v1.2`.
+- [x] Tag `v1.2`. *`v1.2` tags `fe4db49`, the merge of pull request #20;
+      codec 6 is frozen there.*
 
 ## What review will look at
 

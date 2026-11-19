@@ -637,6 +637,16 @@ constexpr ArchiveChecksums kWordsChecksums{{
     {"itch messages", 0x04309642},
 }};
 
+constexpr ArchiveChecksums kWordsFlagChecksums{{
+    {"empty", 0x272b6105},
+    {"one byte", 0x75014fe4},
+    {"zeros 64 KiB", 0x44255c7d},
+    {"random 1 MiB", 0x6b9b9e47},
+    {"every byte value", 0xc6e331e7},
+    {"repetitive text", 0xbcbec371},
+    {"itch messages", 0xf9ec629a},
+}};
+
 void check_determinism(std::string_view codec_name, const ArchiveChecksums& checksums,
                        const std::vector<Sample>& inputs) {
     const cpress::Codec* codec = cpress::find_codec(codec_name);
@@ -665,6 +675,7 @@ void test_determinism(const std::vector<Sample>& inputs) {
     check_determinism("mix9", kMix9Checksums, inputs);
     check_determinism("itch", kItchChecksums, inputs);
     check_determinism("words", kWordsChecksums, inputs);
+    check_determinism("words2", kWordsFlagChecksums, inputs);
 }
 
 // Bytes needed to code `data` with the best possible order-0 model, i.e.
