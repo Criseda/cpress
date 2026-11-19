@@ -496,15 +496,52 @@ The gain grows with the file, as a dictionary's should: the more text, the
 more words recur often enough to be worth a code, and the more often each
 code is used.
 
+**Doing less where the model is sure.** Codec 6, `words2`, is codec 5 with
+three shortcuts, after mcm 0.83 [[9]](#references):
+- **A predicted-byte flag.** While the match model has agreed for 12 bytes
+  or more, one decision can come before the byte: "it is the match's
+  guess". When the guess is right, that decision is the whole byte, and
+  nothing else predicts or learns it. A small model of its own predicts
+  the decision from the match's length, its recent outcomes, and whether
+  the guess was right before in the same context. The flag is coded only
+  when that model is 95% sure or more.
+- **The APMs** are skipped on a bit the mixer is already more than 99.7%
+  sure of.
+- **The mixer** does not learn from a bit it predicted within 20 parts in
+  4096.
+
+With a model of the flag that knew only the match's length and its last
+few outcomes, the flag was right 82% of the time and made the file 1.75%
+larger. The full model codes those bytes for about a quarter of a bit
+each, so a flag must be right nearly always to pay. With the context and
+the gate, it was right 99% of the time and made the file smaller. Its two
+table reads also cost as much time as the bytes it skipped, until they
+were fetched a byte early and the flag was weighed only on long matches:
+as in section 4, memory sets the speed, not arithmetic. The prototype's
+record is in the stage 8 brief.
+
+| | `words` (codec 5) | `words2` (codec 6) | Change |
+|---|---|---|---|
+| `enwik8` bytes | 18,846,644 | **18,838,765** | −0.04% |
+| `enwik9` bytes | 151,906,618 | **151,497,460** | −0.27% |
+| `enwik9` compress ns/B | 358.8 | **292.9** | −18% |
+| `enwik9` decompress ns/B | 423.8 | **366.1** | −14% |
+| Model memory | 4,228 MiB | 4,236 MiB | |
+
+Both codecs were timed the same night; `words` has become faster since
+stage 7's record without changing a byte (appendix, stage 8). The gain in
+time grows with the file, as the share of bytes a long match predicts
+does: a quarter of `enwik9`'s word stream, an eighth of `enwik8`'s.
+
 ## 7. Where cpress sits
 
 Compressors trade size for time, and no single number ranks them. The
-figure puts cpress's three text codecs beside the compressors people use,
+figure puts cpress's four text codecs beside the compressors people use,
 measured on one machine, each alone on one pinned processor, the fastest
 of three runs each way, every round trip checked. The appendix has the
 commands: stage 6's [sitting](#stage-6-the-text-compressors-on-enwik8),
-and stage 7's for [mcm](#stage-7-mcm-083-on-this-machine) and
-[`words`](#stage-7-codec-5-words).
+stage 7's for [mcm](#stage-7-mcm-083-on-this-machine), and stage 8's for
+[`words` and `words2`](#stage-8-codec-6-words2).
 The three hollow points are among the strongest programs the Large Text
 Compression Benchmark lists a size of `enwik8` for [[2]](#references), too
 slow to run here: their sizes are exact, their times the benchmark's,
@@ -521,7 +558,8 @@ measured on other machines.
 | nncp v3.2 † | 14,915,298 | 241,871 | 238,670 |
 | paq8px_v206fix1 † | 15,849,084 | 291,916 | 294,847 |
 | mcm 0.83, `-x11` | 18,234,412 | 377.1 | 373.4 |
-| **cpress `words`** | **18,846,644** | **366.2** | **475.5** |
+| **cpress `words2`** | **18,838,765** | **337.2** | **457.9** |
+| **cpress `words`** | **18,846,644** | **374.1** | **475.9** |
 | **cpress `mix9`** | **19,687,838** | **454.9** | **575.7** |
 | lpaq1, option 9 | 19,755,948 | 684.0 | 725.3 |
 | bsc 3.4.0 | 20,803,016 | 50.4 | 36.5 |
@@ -537,8 +575,8 @@ measured on other machines.
 
 What the figure says:
 
-- **mcm 0.83 is the smallest program measured here, and `words` the
-  next.** mcm is 3.2% smaller, 3% slower compressing and 21% faster
+- **mcm 0.83 is the smallest program measured here, and `words2` the
+  next.** mcm is 3.2% smaller, 12% slower compressing and 18% faster
   decompressing. Both are context mixers, and both build a dictionary of
   words from their input (section 6).
 - **`mix9` is faster than lpaq1,** the program its design follows, on this
@@ -552,10 +590,10 @@ What the figure says:
   has to predict every bit again. They pay for it in size: 25 to 36 MB.
 - **bsc** is the strongest trade on the chart: 20.8 MB at 37 to 50 ns a
   byte, by sorting the file so that bytes in similar contexts sit together
-  (the Burrows–Wheeler transform) and coding the result. `words` is 9%
+  (the Burrows–Wheeler transform) and coding the result. `words2` is 9%
   smaller, at 7 to 13 times the time.
-- **The top of the benchmark** is 16% to 22% smaller than `words`, at
-  500 to 1,700 times the time, on machines that are not this one. paq8px
+- **The top of the benchmark** is 16% to 22% smaller than `words2`, at
+  500 to 1,800 times the time, on machines that are not this one. paq8px
   and cmix mix far more models than cpress, cmix with neural networks
   among them, and nncp predicts with a transformer
   [[2]](#references) [[7]](#references).
@@ -572,26 +610,27 @@ block of 1,000 MB, bsc 3.25 sorts all of `enwik9` at once and makes
 decompressing on its tester's machine [[2]](#references): a block that
 grows with the file, against tables that do not.
 
-`words` makes **151,906,618 bytes of `enwik9`, 1.215 bits a byte**, at 365
-ns a byte compressing and 453 decompressing. The benchmark ranks on the
-size plus a zip of the decompressor, source or executable, whichever is
-smaller; cpress's source, zipped, is 104,990 bytes, which makes
-**152,011,608** in all (`mix9`'s total was 166,051,214). Of the 238
-programs in the benchmark's table on 17 November 2026, that would place
-43rd, where `mix9` would place 61st.
+`words2` makes **151,497,460 bytes of `enwik9`, 1.212 bits a byte**, at 293
+ns a byte compressing and 366 decompressing; `words` makes 151,906,618
+(section 6). The benchmark ranks on the size plus a zip of the
+decompressor, source or executable, whichever is smaller; cpress's source,
+zipped, is 112,714 bytes, which makes **151,610,174** in all (`words`'s
+total was 152,011,608 and `mix9`'s 166,051,214). Of the 238 programs in
+the benchmark's table on 17 November 2026, that would place 43rd, as
+`words` would, where `mix9` would place 61st.
 
 The benchmark also marks a frontier: a time is underlined when no smaller
-program is faster. No program smaller than `words` in that table
+program is faster. No program smaller than `words2` in that table
 compresses faster than it, so by the table's own rule it is on the
-compression frontier. Two caveats keep that honest. The table's times
-come from different machines, and the program that sets the frontier
-just above it, mcm 0.83 by Mathieu Chartier, measured on this machine,
-is still 4.6% smaller and faster both ways: 144,854,575 bytes of `enwik9`
-at 334 and 347 ns a byte under WSL [[9]](#references), where `words`
-runs no faster than on Windows (appendix, stage 7). And for decompression mcm
-is the one smaller program that is also faster. mcm too builds a
-dictionary from its input; what else separates the two is the next
-question.
+compression frontier. The table's times come from different machines, so
+the program just above it, mcm 0.83 by Mathieu Chartier, was measured on
+this one. mcm is 4.4% smaller, 144,854,575 bytes of `enwik9`, at 334 and
+347 ns a byte under WSL [[9]](#references). Under WSL on 19 November,
+`words2` ran at 313 and 424 (appendix, stage 8): 6% faster than mcm
+compressing, and 22% slower decompressing. For decompression, mcm is the
+one smaller program in the table that is also faster. mcm too builds a
+dictionary from its input, and stage 8 took its shortcuts; what else
+separates the two is in issue #4.
 
 Measured here, lpaq1 and xz make the benchmark's sizes to the byte, and
 bzip2 the size of its row for version 1.0.3. gzip's differs by one byte,
@@ -633,13 +672,13 @@ be ruled out is tested.
 
 The classical design is finished. What the stages measured and left:
 
-- **For text,** the 4.6% between `words` and mcm 0.83 on `enwik9`, which
-  is a program of the same class at the same speed. A second mixer and a
+- **For text,** the 4.4% between `words2` and mcm 0.83 on `enwik9`, a
+  program of the same class at about the same speed. A second mixer and a
   third APM were measured on codec 5 and were not worth their time
-  (−0.43% for 17% more); what mcm does besides its dictionary is the place
-  to look next. Closing the gap to the top of the benchmark takes what
-  cmix does: neural networks over hundreds of models, at several hundred
-  times the running time [[7]](#references).
+  (−0.43% for 17% more). Issue #4 lists what else mcm does differently;
+  stage 8 took the shortcuts. Closing the gap to the top of the benchmark
+  takes what cmix does: neural networks over hundreds of models, at
+  several hundred times the running time [[7]](#references).
 - **For market data,** a new order's price against the best price levels
   of its stock (−0.5%), and executions named by their place in a queue at
   each price (at most about half a percent). The timestamps, half the
@@ -648,9 +687,13 @@ The classical design is finished. What the stages measured and left:
 - **For speed,** the arithmetic itself, which stage 7 profiled: the
   history tables, the state maps and the two APMs take most of it, and
   fetching the second APM's next curve early makes compressing 3 to 6%
-  faster without changing a byte (#15). Then threads: a codec that splits
-  its input into blocks and codes them at once, each with a model of its
-  own, trading compression for speed. For ITCH that trade is poor: an
+  faster without changing a byte (#15). The decoder still waits for
+  memory. Given the true bytes to fetch ahead with, as the encoder has,
+  `words2` decompressed the 30 MB slice 17% faster, and the second
+  nibble's buckets alone were about half of that: issue #19 is a table
+  laid out so that both nibbles are found from one address. Then threads:
+  a codec that splits its input into blocks and codes them at once, each
+  with a model of its own, trading compression for speed. For ITCH that trade is poor: an
   order message refers to an order added minutes or hours earlier, which
   a block that starts fresh does not have.
 
@@ -1024,6 +1067,43 @@ The settings of the transform were chosen on `enwik8` with a throwaway
 prototype and `mix9` behind it; its measurements, and the experiments on
 codec 5 that were not kept, are in the stage 7 brief
 ([docs/stages/stage-7.md](stages/stage-7.md), sections 3 and 4).
+
+### Stage 8: codec 6, `words2`
+
+`cpress-bench --codec words2 --cpu 2` and `--codec words` on Windows 11,
+MSVC 19.51, the i9-12900K, the machine otherwise quiet, 19 November 2026,
+built at `6f3e520`. `enwik8` is the fastest of three runs each way, the two
+codecs alternating. `enwik9` is one run each.
+
+| File | Codec | Size (bytes) | Bits/byte | Archive CRC-32 | Compress ns/B | Decompress ns/B | Peak MiB | Large pages MiB |
+|---|---|---|---|---|---|---|---|---|
+| `enwik8` | `words2` | 18,838,765 | 1.507 | `e03abb2b` | 319.5 | 406.6 | 4,513.6 | 4,238.0 |
+| `enwik8` | `words` | 18,846,644 | 1.508 | `c9cce0c7` | 355.1 | 427.7 | 4,505.8 | 4,230.0 |
+| `enwik9` | `words2` | 151,497,460 | 1.212 | `0545c0a8` | 292.9 | 366.1 | 6,894.9 | 4,238.0 |
+| `enwik9` | `words` | 151,906,618 | 1.215 | `9bbfbd3c` | 358.8 | 423.8 | 6,887.2 | 4,230.0 |
+
+`words` is faster than its stage 7 record because of #15 and #17, which
+changed no byte of its output. The same night, under WSL 2 with GCC 13.3,
+the same way (`enwik8` the fastest of three runs each way, `--repeat 3`;
+`enwik9` one):
+
+| File | Codec | Compress ns/B | Decompress ns/B |
+|---|---|---|---|
+| `enwik8` | `words2` | 337.2 | 457.9 |
+| `enwik8` | `words` | 374.1 | 475.9 |
+| `enwik9` | `words2` | 313.0 | 424.4 |
+
+The decompressor for the benchmark is built the way stage 7's was:
+`include/` and `src/` at `64c1ea4`, the commit after these timings, which
+changes no byte of output (stage 8 brief, section 4), with the note of the
+one-line build, zipped at deflate level 9: 112,714 bytes. Built from those
+files by the note's line for GCC 13.3, it restores `enwik9` from its
+`words2` archive exactly. In all, 151,610,174 bytes.
+
+The timings on the 30 MB slice that decided the stage are in the stage 8
+brief ([docs/stages/stage-8.md](stages/stage-8.md), section 4). Its
+prototype's measurements, the variants not kept among them, are in
+section 2.
 
 ## References
 

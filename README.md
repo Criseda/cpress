@@ -20,9 +20,10 @@ right.
 The same engine compresses two kinds of data. Given English text, it is a
 general model in the class of Matt Mahoney's lpaq1: 19.7 MB of `enwik8`,
 the first 100 MB of Wikipedia, a little smaller than lpaq1 itself. Told
-what a word is, and given an order-7 table and more memory, the same
-engine makes 18.8 MB of it, and 151.9 MB of the first gigabyte: 8.5% less
-than the byte model, in less time. Given a
+what a word is, and given an order-7 table, more memory and a few
+shortcuts where it is already sure, the same engine makes 18.8 MB of it,
+and 151.5 MB of the first gigabyte: 8.7% less than the byte model, in
+two-thirds of the time. Given a
 day of NASDAQ's ITCH market feed, it is a model that knows what an order
 is. It keeps every live order the messages describe, names an order by its
 place among its stock's recent orders instead of by its 64-bit number, and
@@ -49,8 +50,8 @@ Compression Benchmark's own, timed on other machines.*
 
 | Input | cpress | For comparison | Record |
 |---|---|---|---|
-| `enwik8`, the first 100 MB of English Wikipedia | **18,846,644 bytes**, 1.508 bits a byte (`words`) | `mix9`: 19,687,838. lpaq1: 19,755,948, and slower on the same machine | [stage 7](docs/write-up.md#stage-7-codec-5-words) |
-| `enwik9`, the first 1 GB | **151,906,618 bytes**, 1.215 bits a byte (`words`) | `mix9`: 165,953,692. mcm 0.83: 144,854,575, and faster | [stage 7](docs/write-up.md#stage-7-codec-5-words) |
+| `enwik8`, the first 100 MB of English Wikipedia | **18,838,765 bytes**, 1.507 bits a byte (`words2`) | `mix9`: 19,687,838. lpaq1: 19,755,948, and slower on the same machine | [stage 8](docs/write-up.md#stage-8-codec-6-words2) |
+| `enwik9`, the first 1 GB | **151,497,460 bytes**, 1.212 bits a byte (`words2`) | `mix9`: 165,953,692. mcm 0.83: 144,854,575, slower compressing and faster decompressing | [stage 8](docs/write-up.md#stage-8-codec-6-words2) |
 | A NASDAQ ITCH day, 8.25 GB, 268,744,780 messages | **3.884 bytes a message** (`itch`) | Every field a column, each `zstd -19`: 8.036. `xz -9`: 9.261 | [stage 5](docs/write-up.md#stage-5-market-data) |
 | Another day, not used in design | **3.843 bytes a message** | The columns: 7.901 | [stage 5](docs/write-up.md#stage-5-market-data) |
 
@@ -270,7 +271,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 5 | Market data: an order-table model for exchange feeds | done, on an ITCH day file: 3.88 bytes per message, 52% under column-split + zstd (target 4.00 or better, and 45%) |
 | 6 | Write-up and release | done: [the write-up](docs/write-up.md); `enwik9` 165,953,692 bytes, and 97,522 for the decompressor |
 | 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
-| 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | in progress: `words2`, `enwik8` 18,838,765 bytes; timing waits for a quiet machine (target smaller than `words` and faster both ways) |
+| 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | done: `words2`, `enwik9` 151,497,460 bytes and 112,714 for the decompressor, compressing 18% and decompressing 14% faster than `words` (target smaller than `words` and faster both ways) |
 
 ## Documentation
 
@@ -279,7 +280,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | [docs/write-up.md](docs/write-up.md) | How cpress works, what each part is worth, and every measurement |
 | [docs/idea.md](docs/idea.md) | Why the project exists, how context mixing works, goals and non-goals |
 | [docs/roadmap.md](docs/roadmap.md) | Every stage in detail, with exit criteria |
-| `docs/stages/stage-N.md`: [1](docs/stages/stage-1.md), [2](docs/stages/stage-2.md), [3](docs/stages/stage-3.md), [4](docs/stages/stage-4.md), [5](docs/stages/stage-5.md), [6](docs/stages/stage-6.md), [7](docs/stages/stage-7.md) | The design record, a brief for each stage: the plan, the alternatives measured and the one chosen, the exit criteria, and every departure from the plan with its reason. Stage 3's sets out the bit-history states and stage 5's the `itch` model, which the code cites |
+| `docs/stages/stage-N.md`: [1](docs/stages/stage-1.md), [2](docs/stages/stage-2.md), [3](docs/stages/stage-3.md), [4](docs/stages/stage-4.md), [5](docs/stages/stage-5.md), [6](docs/stages/stage-6.md), [7](docs/stages/stage-7.md), [8](docs/stages/stage-8.md) | The design record, a brief for each stage: the plan, the alternatives measured and the one chosen, the exit criteria, and every departure from the plan with its reason. Stage 3's sets out the bit-history states and stage 5's the `itch` model, which the code cites |
 | [docs/style.md](docs/style.md) | Code style and review checklist |
 
 ## Licence

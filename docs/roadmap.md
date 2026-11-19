@@ -202,7 +202,7 @@ compressing in 365 ns a byte: 43rd of 238 on the benchmark's table, and
 on its compression frontier by its own rule. On this machine mcm 0.83 is
 still 4.6% smaller and faster both ways.
 
-## Stage 8: shortcuts (in progress)
+## Stage 8: shortcuts (done)
 
 Brief: [stage-8.md](stages/stage-8.md).
 
@@ -216,8 +216,12 @@ already sure, as codec 6, `words2`.
   update skipped on bits it predicted within 20/4096.
 - Tag `v1.2` once it is timed on a quiet machine.
 
-The prototype made `enwik9` 0.27% smaller than codec 5, and the 30 MB
-slice 5–14% faster both ways in each round of a run on a busy machine.
+Done: codec 6, `words2`. `enwik9` is 151,497,460 bytes, 0.27% smaller
+than codec 5, and 151,610,174 with the source zipped: still 43rd of 238
+on the benchmark's table. On a quiet machine it compresses 18% faster
+than codec 5 and decompresses 14% faster, at 293 and 366 ns a byte.
+On this machine mcm 0.83 is still 4.4% smaller and decompresses faster;
+`words2` compresses faster.
 
 ## After 1.0
 

@@ -176,6 +176,74 @@ Without it, valid archives of very repetitive input would be rejected.
 **Memory:** 4.3 MiB at level 10 and 4,236.4 MiB at 25, 8 MiB more than codec
 5 at 25.
 
+## 4. Timing
+
+One sitting on 19 November 2026: Windows 11, MSVC 19.51, the i9-12900K,
+the machine otherwise quiet. `cpress-bench --cpu 2`, every round trip
+checked. The builds were stage 8 at `6f3e520`, `main` before it at
+`d0fb70e`, and `v1.1` at `029c588`.
+
+**Codec 6 against codec 5.** e30, the fastest of seven rounds each way.
+The five rows ran interleaved, in a different order each round.
+
+| e30 | Compress ns/B | Decompress ns/B |
+|---|---|---|
+| `mix9`, `v1.1` | 447.5 | 569.0 |
+| `mix9`, stage 8 | 431.7 | 526.1 |
+| `words`, `v1.1` | 366.7 | 486.1 |
+| `words`, stage 8 | 357.5 | 437.5 |
+| **`words2`** | **334.4** | **414.8** |
+
+`words2` is 6.5% faster compressing than `words` and 5.2% faster
+decompressing. Codecs 3 and 5 are faster than at `v1.1` because of #15 and
+#17, which landed after the tag.
+
+**The driver's per-byte loop.** The rounds above cannot separate the loop's
+move into two helpers, `encode_byte()` and `decode_byte()`, from #15 and
+#17. A second set of five rounds compared stage 8 with `main` at `d0fb70e`:
+
+| e30, fastest of five | Compress ns/B | Decompress ns/B |
+|---|---|---|
+| `mix9`, `main` | 428.2 | 529.0 |
+| `mix9`, stage 8 | 435.7 | 528.5 |
+| `words`, `main` | 356.2 | 440.1 |
+| `words`, stage 8 | 359.1 | 438.0 |
+
+`words` was no slower, and neither was `mix9` decompressing. `mix9`
+compressing was 1.8% slower, in every round. Three more sets of six rounds
+measured `mix9` compressing against variants of stage 8. Each cell is the
+fastest run, then the median:
+
+| e30, `mix9` compress ns/B | Set 3 | Set 4 | Set 5 |
+|---|---|---|---|
+| `main` | 432.6, 434.1 | 419.8, 423.5 | 422.3, 427.1 |
+| stage 8 at `6f3e520` | 433.6, 441.1 | 437.0, 442.3 | 423.4, 437.2 |
+| the old loop, kept for models without a flag | 429.6, 435.5 | | 418.1, 428.1 |
+| `encode_byte()`, its flag code behind `if constexpr` | | 427.2, 438.7 | |
+| no `encode_byte()`: the byte coded in `encode_bitwise()` | | | 420.5, 428.5 |
+
+The fastest runs drift between sets by more than the effect. The medians do
+not. Stage 8's median was 1.6% to 4.4% slower than `main`'s in every set,
+and the two builds without a call per byte matched `main`. The likely cause
+is a call to `encode_byte()` that MSVC did not inline; the disassembly was
+not read. The encoder now codes each byte in `encode_bitwise()`'s loop, the
+last row, with one copy of the bit loop as before. `decode_byte()` stays a
+function: `mix9` decompressing showed no cost. The change moves no byte. The
+other timings in this section are of `6f3e520`, before it.
+
+**Whole files.** `enwik8` is the fastest of three runs each way, the two
+codecs alternating. `enwik9` is one run each.
+
+| | `words` | `words2` | Change |
+|---|---|---|---|
+| `enwik8` compress ns/B | 355.1 | **319.5** | −10.0% |
+| `enwik8` decompress ns/B | 427.7 | **406.6** | −4.9% |
+| `enwik9` compress ns/B | 358.8 | **292.9** | −18.4% |
+| `enwik9` decompress ns/B | 423.8 | **366.1** | −13.6% |
+
+The gain grows with the file. Section 1's count of bytes a flag would have
+right was twice as high on `enwik9` as on `enwik8`.
+
 ## Exit criteria
 
 - [x] Codec 6 makes the prototype's bytes: e30 5,998,210 and `enwik8`
@@ -191,20 +259,24 @@ Without it, valid archives of very repetitive input would be rejected.
 - [x] CI green on MSVC, GCC, Clang and ASan + UBSan. *Green on `15ef5e1`.*
 - [x] clang-format and clang-tidy clean, no compiler warnings. *Tidy (LLVM
       22.1) on Windows; GCC 13.3 with `-Werror` under WSL.*
-- [ ] On a quiet machine, on e30, best of several interleaved rounds:
+- [x] On a quiet machine, on e30, best of several interleaved rounds:
   - codec 6 faster than codec 5 both ways;
   - codecs 3 and 5 no slower than at `v1.1`, since the driver's per-byte
-    loop moved into `encode_byte()` and `decode_byte()`.
-- [ ] `enwik9` timed for codec 6, and the write-up, the README and the
-      roadmap updated; tag `v1.2`.
+    loop changed.
+
+  *19 November 2026; section 4.*
+- [x] `enwik9` timed for codec 6, and the write-up, the README and the
+      roadmap updated. *Section 4, and the write-up's sections 6 and 7 and
+      appendix.*
+- [ ] Tag `v1.2`.
 
 ## What review will look at
 
 - `Mix9` and `Mix10` take no shortcut: everything new is behind
   `kShortcuts`, and their golden archives pass.
-- The two directions make the same calls in the same order:
-  `encode_byte()` and `decode_byte()` side by side.
+- The two directions make the same calls in the same order: the body of
+  `encode_bitwise()`'s loop and `decode_byte()` side by side.
 - Exclusion never skips a bit the encoder could not have forced (an assert
-  in `encode_byte()`).
+  in `encode_bitwise()`).
 - A hit leaves the model where `push_byte()` of that byte would: no slots
   selected, nothing learned.
