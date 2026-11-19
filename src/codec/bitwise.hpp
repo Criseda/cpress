@@ -17,8 +17,8 @@
 // before the byte it may offer a flag, "the byte is my guess", which is
 // coded like a bit. If the flag hits, the byte is done. If not, the bits
 // follow, and any bit the predictor knows already (forced_bit()) is
-// predicted and learned but not coded. Both loops do this in
-// encode_byte() and decode_byte(), which mirror each other line by line.
+// predicted and learned but not coded. The body of encode_bitwise's loop
+// and decode_byte() do this, and mirror each other line by line.
 //
 // Each comes in two forms. One takes a predictor the caller has constructed,
 // for models that need arguments; it must be fresh, never used before. The
@@ -99,29 +99,8 @@ template <model::Predictor P>
     }
 }
 
-// Codes `byte`: its flag, if the predictor offers one, then its bits unless
-// the flag hit.
-template <model::Predictor P>
-void encode_byte(P& predictor, coder::Encoder& encoder, std::uint8_t byte) {
-    if constexpr (model::Flagging<P>) {
-        if (predictor.offer_flag()) {
-            const int hit = byte == predictor.guess() ? 1 : 0;
-            encoder.encode(hit, predictor.predict_flag());
-            predictor.update_flag(hit);
-            if (hit != 0) return;
-        }
-    }
-    for (int shift = 7; shift >= 0; --shift) {
-        const int bit = (byte >> shift) & 1;
-        const std::uint32_t p12 = predictor.predict();
-        const std::optional<int> forced = forced_bit(predictor);
-        assert(!forced.has_value() || *forced == bit);
-        if (!forced.has_value()) encoder.encode(bit, p12);
-        predictor.update(bit);
-    }
-}
-
-// The byte encode_byte() coded, read back.
+// The byte encode_bitwise() coded, read back: its flag, if the predictor
+// offers one, then its bits unless the flag hit.
 template <model::Predictor P>
 [[nodiscard]] std::uint8_t decode_byte(P& predictor, coder::Decoder& decoder) {
     if constexpr (model::Flagging<P>) {
@@ -155,12 +134,31 @@ void encode_bitwise(P& predictor, ByteView input, Bytes& output) {
     // and random input grows by about one percent.
     output.reserve(output.size() + input.size() + (input.size() / 64) + 16);
 
+    // Each byte is coded here, not in a helper beside decode_byte(): under
+    // MSVC a call per byte made mix9 about 2% slower compressing
+    // (docs/stages/stage-8.md, section 4).
     coder::Encoder encoder(output);
     for (std::size_t i = 0; i < input.size(); ++i) {
         if constexpr (model::Prefetching<P>) {
             if (i + 1 < input.size()) predictor.prefetch_after(input[i], input[i + 1]);
         }
-        detail::encode_byte(predictor, encoder, input[i]);
+        const std::uint8_t byte = input[i];
+        if constexpr (model::Flagging<P>) {
+            if (predictor.offer_flag()) {
+                const int hit = byte == predictor.guess() ? 1 : 0;
+                encoder.encode(hit, predictor.predict_flag());
+                predictor.update_flag(hit);
+                if (hit != 0) continue;
+            }
+        }
+        for (int shift = 7; shift >= 0; --shift) {
+            const int bit = (byte >> shift) & 1;
+            const std::uint32_t p12 = predictor.predict();
+            const std::optional<int> forced = detail::forced_bit(predictor);
+            assert(!forced.has_value() || *forced == bit);
+            if (!forced.has_value()) encoder.encode(bit, p12);
+            predictor.update(bit);
+        }
     }
     encoder.finish();
 }
