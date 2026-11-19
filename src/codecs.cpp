@@ -240,7 +240,8 @@ constexpr std::array<Codec, 7> kCodecs{{
      .summary = "a dictionary of the input's words, then mix9 with order 7",
      .encode = &words_encode<model::Mix10, kWordsName>,
      .decode = &words_decode<model::Mix10, kWordsName>},
-    // Codec 6: experimental until stage 8 is tagged.
+    // Codec 6: codec 5 with shortcuts. Frozen at v1.2: its output is
+    // permanent.
     {.id = 6,
      .name = kWordsFlagName,
      .summary = "words, with a predicted-byte flag and skipped work",

@@ -76,7 +76,7 @@ every measurement with the commit that made it.
   four times the memory. Stage 7; asked for by name, `--codec words`.
 - `words2`: `words` with shortcuts. A byte the match model is sure of is
   coded as one decision, and the APMs and the mixer skip bits the model is
-  already sure of. Stage 8, experimental; `--codec words2`.
+  already sure of. Stage 8; asked for by name, `--codec words2`.
 
 ## Build
 
@@ -180,7 +180,7 @@ match the header.
 | 3 | `mix9` | As `mix6`, with a level of 10 to 23 (frozen at `v0.3`) |
 | 4 | `itch` | One byte, the model's memory level, 10 to 23; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.5`) |
 | 5 | `words` | One byte, the model's memory level, 10 to 25; the size of the word stream, 8 bytes; then arithmetic-coded bits and 4 flush bytes (frozen at `v1.1`) |
-| 6 | `words2` | As `words`, with a flag before some bytes (experimental) |
+| 6 | `words2` | As `words`, with a flag before some bytes (frozen at `v1.2`) |
 
 `order0`, `mix6` and `mix9` code each byte most significant bit first. Every bit is
 coded with a 12-bit probability P(bit = 1) from the model, by a carryless
