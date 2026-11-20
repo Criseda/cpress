@@ -306,6 +306,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 6 | Write-up and release | done: [the write-up](docs/write-up.md); `enwik9` 165,953,692 bytes, and 97,522 for the decompressor |
 | 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
 | 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | done: `words2`, `enwik9` 151,497,460 bytes and 112,714 for the decompressor, compressing 18% and decompressing 14% faster than `words` (target smaller than `words` and faster both ways) |
+| 9 | Past mcm 0.83: codec 7 | in progress (target under 144,934,149 bytes of `enwik9` in all, compressing under 394 ns a byte, decompressing no slower than `words2`) |
 
 ## Layout
 
