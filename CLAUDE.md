@@ -39,6 +39,9 @@ build/Release/cpress-bench corpus/enwik8        # build/cpress-bench off Windows
 ```
 
 - `-DCPRESS_SANITIZE=ON` adds ASan and UBSan (GCC and Clang only).
+- `-DCPRESS_FUZZ=ON` builds `cpress-fuzz`, the decoder under libFuzzer
+  (Clang only, so CI only here); `cpress-fuzz-replay <file>` reproduces
+  what it finds with any compiler.
 - On Windows, clang-format and clang-tidy ship with Visual Studio under
   `VC/Tools/Llvm/x64/bin/`.
 - MSBuild fails if the build path exceeds 260 characters; keep paths short.

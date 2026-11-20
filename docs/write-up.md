@@ -659,7 +659,9 @@ be ruled out is tested.
   `enwik8` passes 1.6) but because a crafted archive could otherwise walk
   a weight into overflow. A malformed archive is an error and nothing
   else: not a crash, a hang or a runaway allocation. Corruption and
-  mutation tests check it for every codec.
+  mutation tests check it for every codec, and in CI libFuzzer, under
+  the same sanitizers, searches for an archive that breaks it on every
+  push and every night.
 - **Formats are permanent.** Once a codec ships, its id and its output are
   fixed. A small archive for each is checked in as bytes, and the tests
   check that it decodes, and that its input still compresses to exactly

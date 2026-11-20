@@ -93,6 +93,19 @@ On Windows the binaries land in `build/Release/`; elsewhere in `build/`.
 Keep the project in a short path on Windows: MSBuild fails when paths exceed
 260 characters.
 
+The decoder is fuzzed in CI with libFuzzer, which needs Clang:
+
+```
+CXX=clang++ cmake -S . -B build-fuzz -DCPRESS_FUZZ=ON
+cmake --build build-fuzz --target cpress-fuzz cpress-fuzz-seeds
+build-fuzz/cpress-fuzz-seeds seeds
+mkdir -p corpus
+build-fuzz/cpress-fuzz corpus seeds -max_len=4096
+```
+
+An input it reports reproduces with any compiler:
+`cpress-fuzz-replay <file>`.
+
 ## Use
 
 ```
@@ -245,6 +258,7 @@ coding it. Its model is 4.3 MiB at level 10 and 4,236.4 MiB at 25.
 | `src/codec/` | The drivers that run a model over an input: bit by bit, and message by message |
 | `src/cli/` | The `cpress` tool |
 | `tests/` | Component, golden-archive, round-trip, corruption and mutation tests |
+| `fuzz/` | The decoder's fuzz target, its seeds, and a replay tool for any compiler |
 | `bench/` | The `cpress-bench` runner, the `cpress-columns` splitter and the baseline script |
 | `corpus/` | Benchmark inputs (not tracked) |
 | `docs/` | The idea, roadmap, stage briefs and code style |
