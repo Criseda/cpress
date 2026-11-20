@@ -400,9 +400,9 @@ looked at while the codec was designed, `itch` makes 3.843 bytes a
 message and is 51.4% smaller than the fair baseline there: the constants
 chosen on one day hold on another.
 
-**The cost.** `itch` compresses at 5.7 MB/s, faster than every baseline
-at these settings: 1.7 times the fair baseline's speed, 6 times `xz -9`'s.
-It decompresses at 5.5 MB/s, 8 times slower than `xz` and about 100 times
+**The cost.** `itch` compresses at 7.4 MB/s, faster than every baseline
+at these settings: 2.2 times the fair baseline's speed, 7 times `xz -9`'s.
+It decompresses at 6.5 MB/s, 7 times slower than `xz` and about 100 times
 slower than `zstd`, because the decoder runs the same model as the
 encoder and does the same work. cpress is an archival tool: a file is
 compressed once and read rarely.
@@ -904,7 +904,7 @@ cut with `cpress-columns --head`, each program alone on a quiet machine:
 
 | Compressor | Size (bytes) | Bytes/message | Compress MB/s | Decompress MB/s |
 |---|---|---|---|---|
-| `cpress`, codec `itch` | **118,013,377** | **3.934** | **5.71** | **5.54** |
+| `cpress`, codec `itch` | **118,013,377** | **3.934** | **7.39** | **6.48** |
 | columns, `zstd -19` each (the fair baseline) | 241,223,312 | 8.041 | 3.36 | – |
 | `cpress`, codec `mix9` | 243,566,729 | 8.119 | 1.42 | 0.98 |
 | `xz -9` | 275,980,244 | 9.199 | 1.01 | 43.51 |
@@ -912,20 +912,50 @@ cut with `cpress-columns --head`, each program alone on a quiet machine:
 | `zstd -19` | 306,219,590 | 10.207 | 1.80 | 655.55 |
 | `gzip -9` | 385,060,713 | 12.835 | 1.92 | 115.89 |
 
-The `itch` row is `cpress-bench --codec itch --cpu 2 --repeat 3` at
-`5d2958d`, the build above, the fastest of three; the archive has CRC-32
-`269d0221`, and the order table evicted 160 orders. The other rows are `bench/baselines.sh` with one job at a time, on
+The `itch` row is `cpress-bench --codec itch --cpu 2` after pull request
+#23, the fastest of three runs interleaved with three of `v1.2`; the
+archive has CRC-32 `269d0221`, and the order table evicted 160 orders.
+The other rows are `bench/baselines.sh` with one job at a time, on
 the same machine and tools; the `mix9` row is GCC 13.3. A baseline's speed
 does not change with cpress's code, so they were measured once, with
 `16224b8`, and stand.
 
-`itch` compresses faster than every baseline at these settings, 1.7 times
-the fair baseline's speed and 6 times `xz -9`'s. It decompresses 8 times
+`itch` compresses faster than every baseline at these settings, 2.2 times
+the fair baseline's speed and 7 times `xz -9`'s. It decompresses 7 times
 slower than `xz` and about 100 times slower than `zstd`: the decoder runs
 the same model as the encoder, message by message, so it does the same
 work. That is the trade of [docs/idea.md](idea.md), an archival tool.
-On the whole of day 2, on a quiet machine, it ran at 5.80 MB/s compressing
-and 5.09 decompressing, so the slice's speed holds over a day.
+At `5d2958d`, on the whole of day 2, on a quiet machine, it ran at
+5.80 MB/s compressing and 5.09 decompressing, against 5.71 and 5.54 on
+the slice then, so the slice's speed holds over a day.
+
+**Prefetching** (pull request #23, the same archive byte for byte). Codec
+4 was written before mix9 learned to fetch early (#15, #17). A sampling
+profile of `v1.2` compressing the first 3,000,000 messages put a third
+of the time in the history tables' searches, each one waiting on a
+bucket of a 16 MiB table, and a sixth in the APM's refine, waiting on a
+curve of a 6.9 MiB table. The field coder now asks for each as soon as it
+is known: a nibble's six buckets together, a byte's second nibble (known
+to the encoder at once, two candidates to the decoder after three bits),
+the encoder's next byte of a number, and the APM curves the next bit can
+use. On the slice above, interleaved with `v1.2` the same night, which ran
+at 6.44 and 6.02 MB/s:
+
+| Build | Compress MB/s | Decompress MB/s |
+|---|---|---|
+| `v1.2` | 6.44 | 6.02 |
+| Prefetching | 7.39 (+15%) | 6.48 (+8%) |
+
+The encoder gains more because it knows every value before it codes it;
+the decoder learns each bit only as it decodes it. `v1.2`'s own rate is
+above the 5.71 and 5.54 measured at `5d2958d`, although nothing codec 4
+runs changed between them but comments, so that difference is not in the
+code, and only the same-night comparison is credited here. Two more were tried and did
+not pay: a decoder that fetches the first byte of a number from the two
+lengths still possible after three bits, and one that fetches the first
+buckets of the order's place, the tracking number, the timestamp and an
+add's reference and side as soon as the stock is known. Issue #22 has
+the profile and every variant.
 
 This row replaces one of the first sitting, at `16224b8`: one run, not
 the fastest of three, at 2.06 and 2.84 MB/s, with the same archive byte

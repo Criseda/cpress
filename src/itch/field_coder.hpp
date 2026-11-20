@@ -34,6 +34,19 @@
 // The history tables and the APM are on large pages where the platform
 // grants them.
 //
+// Prefetching. At a day file's level each history table is 16 MiB and the
+// APM 6.9 MiB, so a bucket or a curve is rarely in the nearer caches,
+// and the coder asks for what it will read as soon as it is known:
+//   - a nibble's six buckets together, before any is searched;
+//   - a byte's second nibble's buckets: the encoder knows that nibble from
+//     the start, the decoder has two candidates after three bits;
+//   - the encoder knows a whole number, so it fetches the next byte's
+//     buckets while it codes this one, and the first byte's while it codes
+//     the length;
+//   - before each bit, the two APM curves the next bit can use.
+// A prefetch is a hint and changes nothing coded (model/prefetch.hpp). The
+// measurements are on issue #22.
+//
 // Update rule: every map, table, the selected weights and the APM's nearer
 // point learn each coded bit; see each component.
 //
@@ -152,7 +165,7 @@ public:
     [[nodiscard]] std::uint32_t nibble(C& coder, Symbol symbol, const Contexts& contexts,
                                        std::uint64_t prefix, std::uint32_t value) noexcept {
         return code_nibble(coder, symbol, keys(symbol, contexts, prefix), kFirstNibble, 1,
-                           kFirstWeights, value);
+                           kFirstWeights, value, Then::Done);
     }
 
     // A symbol of eight bits, in [0, 255]: two nibbles, the second in the
@@ -161,13 +174,13 @@ public:
     [[nodiscard]] std::uint32_t byte(C& coder, Symbol symbol, const Contexts& contexts,
                                      std::uint64_t prefix, std::uint32_t value) noexcept {
         const Keys table_keys = keys(symbol, contexts, prefix);
-        const std::uint32_t high =
-            code_nibble(coder, symbol, table_keys, kFirstNibble, 1, kFirstWeights, value >> 4);
+        const std::uint32_t high = code_nibble(coder, symbol, table_keys, kFirstNibble, 1,
+                                               kFirstWeights, value >> 4, Then::SecondNibble);
         // The first nibble ended on node kNibbleDone + high: that is the
         // second's marker, and the byte's bits so far after a leading 1.
         const std::uint32_t node = model::kNibbleDone + high;
-        const std::uint32_t low =
-            code_nibble(coder, symbol, table_keys, node, node, kSecondWeights, value & 0xF);
+        const std::uint32_t low = code_nibble(coder, symbol, table_keys, node, node, kSecondWeights,
+                                              value & 0xF, Then::Done);
         return (high << 4) | low;
     }
 
@@ -185,6 +198,13 @@ public:
                                        std::uint64_t u, int modelled_bytes) noexcept {
         assert(field.width >= 1 && field.width <= 8);
         assert(C::kDecoding || bytes_needed(u) <= field.width);
+        if constexpr (!C::kDecoding) {
+            const int needed = bytes_needed(u);
+            if (needed > 0 && modelled_bytes > 0) {
+                prefetch_byte(field.byte(needed - 1), contexts, static_cast<std::uint64_t>(needed),
+                              byte_of(u, needed - 1));
+            }
+        }
         auto length = static_cast<int>(nibble(coder, field.length(), contexts, 0,
                                               static_cast<std::uint32_t>(bytes_needed(u))));
         if (length > field.width) {
@@ -196,7 +216,13 @@ public:
         auto prefix = static_cast<std::uint64_t>(length);
         for (int i = 0; i < length; ++i) {
             const int significance = length - 1 - i;
-            const auto in = static_cast<std::uint32_t>((u >> (8 * significance)) & 0xFF);
+            const std::uint32_t in = byte_of(u, significance);
+            if constexpr (!C::kDecoding) {
+                if (i + 1 < length && i + 1 < modelled_bytes) {
+                    prefetch_byte(field.byte(significance - 1), contexts, mix(prefix, in),
+                                  byte_of(u, significance - 1));
+                }
+            }
             const std::uint32_t out =
                 i < modelled_bytes ? byte(coder, field.byte(significance), contexts, prefix, in)
                                    : unmodelled_byte(coder, in);
@@ -234,6 +260,16 @@ private:
     // context_key() in context_table.hpp.
     static constexpr std::uint32_t kFirstNibble = 0;
 
+    // What code_nibble() is followed by: nothing it can prefetch for, or
+    // the second nibble of the same byte.
+    enum class Then : bool { Done, SecondNibble };
+
+    // Byte `significance` of `u`, counted from the least significant.
+    [[nodiscard]] static constexpr std::uint32_t byte_of(std::uint64_t u,
+                                                         int significance) noexcept {
+        return static_cast<std::uint32_t>((u >> (8 * significance)) & 0xFF);
+    }
+
     [[nodiscard]] static constexpr Keys keys(Symbol symbol, const Contexts& contexts,
                                              std::uint64_t prefix) noexcept {
         Keys table_keys{};
@@ -245,14 +281,43 @@ private:
         return table_keys;
     }
 
+    // Starts loading the six buckets a nibble with these keys and this
+    // marker will select.
+    void prefetch_nibble(const Keys& table_keys, std::uint32_t marker) const noexcept {
+        for (std::size_t i = 0; i < kInputs; ++i) {
+            tables_[i].prefetch((table_keys[i] << model::kMarkerBits) | marker);
+        }
+    }
+
+    // Starts loading the buckets of both nibbles of the byte `value`, coded
+    // as `symbol` with these contexts and this prefix. For the encoder,
+    // which knows the byte before it codes it.
+    void prefetch_byte(Symbol symbol, const Contexts& contexts, std::uint64_t prefix,
+                       std::uint32_t value) const noexcept {
+        const Keys table_keys = keys(symbol, contexts, prefix);
+        prefetch_nibble(table_keys, kFirstNibble);
+        prefetch_nibble(table_keys, model::kNibbleDone + (value >> 4));
+    }
+
     // Codes the four bits of `value`. `marker` says which nibble of the
     // symbol this is, `partial` is the symbol's bits so far after a leading
-    // 1, and `weights` is kFirstWeights or kSecondWeights.
+    // 1, and `weights` is kFirstWeights or kSecondWeights. If `then` is
+    // SecondNibble, this is a byte's first nibble, and it also fetches the
+    // second's buckets: at once when encoding, since `value` is that
+    // nibble's marker less kNibbleDone, and when decoding after three bits,
+    // the two markers still possible.
     template <codec::TwoWayCoder C>
     [[nodiscard]] std::uint32_t code_nibble(C& coder, Symbol symbol, const Keys& table_keys,
                                             std::uint32_t marker, std::uint32_t partial,
-                                            std::size_t weights, std::uint32_t value) noexcept {
+                                            std::size_t weights, std::uint32_t value,
+                                            Then then) noexcept {
         assert(symbol < symbols_);
+        // All six are asked for before any is searched, so that their loads
+        // are under way together rather than one per search.
+        prefetch_nibble(table_keys, marker);
+        if (!C::kDecoding && then == Then::SecondNibble) {
+            prefetch_nibble(table_keys, model::kNibbleDone + value);
+        }
         for (std::size_t i = 0; i < kInputs; ++i) {
             tables_[i].select((table_keys[i] << model::kMarkerBits) | marker);
         }
@@ -261,6 +326,13 @@ private:
 
         std::uint32_t node = 1;
         for (int shift = 3; shift >= 0; --shift) {
+            // The next bit refines in one of the two curves after this one's,
+            // unless this is a byte's last bit.
+            if (partial < kApmContextsPerSymbol / 2) {
+                const std::size_t next = apm_context + (std::size_t{partial} * 2);
+                apm_.prefetch(next);
+                apm_.prefetch(next + 1);
+            }
             model::Mixer<kInputs>::Stretched st{};
             for (std::size_t i = 0; i < kInputs; ++i) {
                 st[i] = model::stretch(maps_[i].p12(tables_[i].state(node)));
@@ -280,6 +352,12 @@ private:
             }
             node = (node * 2) + static_cast<std::uint32_t>(bit);
             partial = (partial * 2) + static_cast<std::uint32_t>(bit);
+            if (C::kDecoding && then == Then::SecondNibble && shift == 1) {
+                // Three bits are in: the nibble ends on node * 2 or
+                // node * 2 + 1, and that is the second nibble's marker.
+                prefetch_nibble(table_keys, node * 2);
+                prefetch_nibble(table_keys, (node * 2) + 1);
+            }
         }
         return node - model::kNibbleDone;
     }
