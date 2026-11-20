@@ -15,6 +15,7 @@ endif()
 
 option(CPRESS_WERROR "Treat compiler warnings as errors" OFF)
 option(CPRESS_SANITIZE "Build with ASan and UBSan (GCC and Clang only)" OFF)
+option(CPRESS_FUZZ "Build cpress-fuzz, the decoder under libFuzzer (Clang only)" OFF)
 
 # For clang-tidy and editors (ignored by the Visual Studio generators).
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -55,7 +56,7 @@ endif()
 
 # Core library: container format, codec registry, checksum, file I/O, and
 # the memory behind the models' large tables.
-add_library(cpress_core STATIC
+set(CPRESS_CORE_SOURCES
     src/codecs.cpp
     src/container.cpp
     src/crc32.cpp
@@ -63,6 +64,7 @@ add_library(cpress_core STATIC
     src/stream.cpp
     src/table_memory.cpp
     src/text/word_transform.cpp)
+add_library(cpress_core STATIC ${CPRESS_CORE_SOURCES})
 target_include_directories(cpress_core PUBLIC include PRIVATE src)
 target_link_libraries(cpress_core PRIVATE cpress_warnings)
 
@@ -125,3 +127,48 @@ add_executable(cpress-tests
 target_include_directories(cpress-tests PRIVATE src bench)
 target_link_libraries(cpress-tests PRIVATE cpress_core cpress_warnings)
 add_test(NAME cpress-tests COMMAND cpress-tests)
+
+# Decoder fuzzing (fuzz/). The fuzz target is built everywhere into
+# cpress-fuzz-replay, which runs it on files with any compiler; ctest runs it
+# on the seeds that cpress-fuzz-seeds writes.
+add_executable(cpress-fuzz-seeds fuzz/seeds.cpp tests/itch_sample.cpp)
+# tests/ for the ITCH sample, and src/ for itch/schema.hpp, which it is
+# built from.
+target_include_directories(cpress-fuzz-seeds PRIVATE src tests)
+target_link_libraries(cpress-fuzz-seeds PRIVATE cpress_core cpress_warnings)
+
+add_executable(cpress-fuzz-replay fuzz/replay.cpp fuzz/decompress_target.cpp)
+# src/ for codec/buffer_stream.hpp, the sink the target decodes to.
+target_include_directories(cpress-fuzz-replay PRIVATE src)
+target_link_libraries(cpress-fuzz-replay PRIVATE cpress_core cpress_warnings)
+
+set(CPRESS_FUZZ_SEEDS ${CMAKE_CURRENT_BINARY_DIR}/fuzz-seeds)
+add_test(NAME fuzz-seeds COMMAND cpress-fuzz-seeds ${CPRESS_FUZZ_SEEDS})
+add_test(NAME fuzz-replay COMMAND cpress-fuzz-replay ${CPRESS_FUZZ_SEEDS})
+set_tests_properties(fuzz-seeds PROPERTIES FIXTURES_SETUP fuzz_seeds)
+set_tests_properties(fuzz-replay PROPERTIES FIXTURES_REQUIRED fuzz_seeds)
+
+# cpress-fuzz: the same target under libFuzzer, which mutates its inputs
+# guided by the code they reach. It gets its own copy of the core library,
+# instrumented for coverage and built with ASan and UBSan, so the other
+# targets in the same build are untouched. Asserts stay on whatever the
+# build type: an assert that fails on some archive is a bug the fuzzer
+# should report.
+if(CPRESS_FUZZ)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "CPRESS_FUZZ needs Clang, which ships libFuzzer")
+    endif()
+    set(CPRESS_FUZZ_FLAGS -fsanitize=fuzzer-no-link,address,undefined
+        -fno-sanitize-recover=all -fno-omit-frame-pointer -g -UNDEBUG)
+
+    add_library(cpress_core_fuzz STATIC ${CPRESS_CORE_SOURCES})
+    target_include_directories(cpress_core_fuzz PUBLIC include PRIVATE src)
+    target_compile_options(cpress_core_fuzz PRIVATE ${CPRESS_FUZZ_FLAGS})
+    target_link_libraries(cpress_core_fuzz PRIVATE cpress_warnings)
+
+    add_executable(cpress-fuzz fuzz/decompress_target.cpp)
+    target_include_directories(cpress-fuzz PRIVATE src)
+    target_compile_options(cpress-fuzz PRIVATE ${CPRESS_FUZZ_FLAGS})
+    target_link_options(cpress-fuzz PRIVATE -fsanitize=fuzzer,address,undefined)
+    target_link_libraries(cpress-fuzz PRIVATE cpress_core_fuzz cpress_warnings)
+endif()

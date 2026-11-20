@@ -231,7 +231,6 @@ Only if the classical design is finished and written up:
   at several hundred times the running time.
 - Speed beyond stage 8: a block-parallel codec, a table hashed once per
   byte (issue #19), and the rest measured in issue #4.
-- Decoder fuzzing as a permanent CI job.
 
 Whatever comes of these, the submission to the Large Text Compression
 Benchmark that stage 6 drafted is sent when the owner is content with
@@ -243,7 +242,7 @@ These are not stages; they are added when first useful.
 
 | Item | When |
 |---|---|
-| Decoder fuzzing | Stage 1, once a real decoder exists |
+| Decoder fuzzing | Stage 1, once a real decoder exists, as seeded mutations in the tests; after stage 8, libFuzzer in CI as well (`fuzz/`) |
 | Golden archives | When the first codec id is frozen |
 | Format check in CI | When a clang-format version is pinned |
 | Cross-compiler archive comparison | Stage 1 (expected checksums in tests) |

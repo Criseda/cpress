@@ -1,0 +1,76 @@
+name: fuzz
+
+# The decoder under libFuzzer, with ASan and UBSan (fuzz/): five minutes on
+# every push or pull request that changes code, half an hour every night.
+# The corpus it grows is kept in the Actions cache, so each run starts where
+# the last one stopped; the seeds are written fresh each time, from every
+# codec in the registry. A bug fails the job and uploads the input that
+# found it, which cpress-fuzz-replay reproduces with any compiler.
+#
+# The paths ignored are the build workflow's: see ci.yml.
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      FUZZ_SECONDS: ${{ github.event_name == 'schedule' && 1800 || 300 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: CXX=clang++ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCPRESS_WERROR=ON -DCPRESS_FUZZ=ON
+
+      - name: Build
+        run: cmake --build build --target cpress-fuzz cpress-fuzz-seeds --parallel
+
+      - name: Write the seeds
+        run: build/cpress-fuzz-seeds seeds
+
+      - name: Restore the corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+
+      # One process per core (-fork). In fork mode libFuzzer by default
+      # carries on past a timeout or running out of memory; both are bugs in
+      # a decoder, so they stop the run as a crash does. A decode that takes
+      # 30 seconds is a hang: the largest claim the target accepts, 64 KiB,
+      # takes about a second through the slowest codec with the sanitizers
+      # on (codec 4, which the target decodes twice).
+      - name: Fuzz
+        run: |
+          mkdir -p corpus findings
+          build/cpress-fuzz corpus seeds \
+            -fork=$(nproc) -ignore_timeouts=0 -ignore_ooms=0 \
+            -max_total_time=$FUZZ_SECONDS -max_len=4096 -timeout=30 -rss_limit_mb=2048 \
+            -artifact_prefix=findings/
+
+      - name: Save the corpus
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: corpus
+          key: fuzz-corpus-${{ github.run_id }}
+
+      - name: Upload what it found
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-findings
+          path: findings/

@@ -162,6 +162,9 @@ bits, not `p`.
   constants or from a derivation in a comment, not from a bare number.
 - Untrusted-input tests include archives large enough to reach the limits,
   not only small ones.
+- The decoder is fuzzed with libFuzzer in CI (`fuzz/`). An input it finds
+  becomes a test in `tests/` that names what it proves, in the commit
+  that fixes the bug.
 - Once a codec has shipped, a small golden archive is checked in and must
   keep decoding forever.
 - CI is the record for compilers and sanitizers: it builds and tests every
