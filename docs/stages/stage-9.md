@@ -171,19 +171,72 @@ the model's additions need the time it gives back.
 
 ## 1. mcm, taken apart
 
-*To be filled in by 9a.*
+mcm 0.83 at `02b4e7d`, built by its own `make.sh` under WSL (GCC 13.3),
+from a local copy patched with environment switches, on 23 November.
+Each variant switches off or simplifies one part, then compresses `e30`
+at `-x11` once; a size is a fact of the build, so one run is enough. With
+every switch off, the copy makes the original's bytes: 5,787,924, against
+`words2`'s 5,998,210, which is 3.63% more. Neither the patch nor any line
+of mcm is in this repository.
 
-mcm 0.83 at `02b4e7d`, built by its own `make.sh` under WSL, as stage 7's
-sitting was. Each variant switches off or simplifies one part, then
-compresses `e30` at `-x11` once; a size is a fact of the build, so one run
-is enough. The variants:
+An input switched off reads as 0 to the mixer, which then gives it no
+weight, and its states are not updated. mcm's first input is order 0 while
+no match runs and the match model while one does; they were switched off
+separately.
 
-- each of its inputs, one at a time: order 0, orders 6 and 8, the word,
-  the word pair, the character-class context;
-- the mixer's weights chosen as ours are (previous byte and match length,
-  per byte), and its learning rate held fixed;
-- SSE switched off;
-- the dictionary ranked by count, as codec 5's is.
+| Variant | `e30`, bytes | Change |
+|---|---|---|
+| mcm 0.83 `-x11` | 5,787,924 | |
+| **The mixer** | | |
+| weights chosen as ours are: previous byte and match length, per byte | 5,919,123 | +2.27% |
+| weights from the partial byte only | 5,916,626 | +2.22% |
+| its weight sets per byte, not per bit | 5,900,709 | +1.95% |
+| ours (previous byte and match length), but per bit | 5,820,301 | +0.56% |
+| no character class in the choice | 5,832,167 | +0.76% |
+| no word length in the choice | 5,808,054 | +0.35% |
+| no match length in the choice | 5,803,569 | +0.27% |
+| learning rate fixed at its floor (28) | 5,814,739 | +0.46% |
+| learning rate fixed at 64 | 5,800,015 | +0.21% |
+| never skips an update | 5,795,045 | +0.12% |
+| skips the mixer, but always updates the states | 5,795,285 | +0.13% |
+| **The inputs** | | |
+| the character-class context off | 5,903,669 | +2.00% |
+| order 2 off | 5,842,302 | +0.94% |
+| order 4 off | 5,838,885 | +0.88% |
+| order 6 off | 5,831,570 | +0.75% |
+| order 3 off | 5,827,417 | +0.68% |
+| order 1 off | 5,825,899 | +0.66% |
+| the word off | 5,820,579 | +0.56% |
+| the word pair off | 5,809,303 | +0.37% |
+| order 0 off | 5,801,136 | +0.23% |
+| the match model off | 5,800,849 | +0.22% |
+| order 8 off | 5,797,517 | +0.17% |
+| orders 5 and 7 in place of 6 and 8 | 5,780,003 | −0.14% |
+| **The rest** | | |
+| SSE off | 5,791,668 | +0.06% |
+| the predicted-byte flag off (`-lzp=false`) | 5,787,245 | −0.01% |
+| no dictionary (`-filter=none`) | 5,864,393 | +1.32% |
+| dictionary ranked by count only | 5,787,022 | −0.02% |
+| dictionary words seen 20 times or more | 5,784,075 | −0.07% |
+
+What it says, in order of size:
+
+1. **The mixer's weight sets are chosen per bit.** Chosen per byte, mcm
+   loses 1.95%. Chosen as ours are, per byte, it loses 2.27%. Per bit, ours
+   loses only 0.56%, so the partial byte in the choice is most of it.
+2. **The character-class context is worth 2.0%,** more than any order.
+   Each byte maps to one of 16 classes (letters, digits, space,
+   punctuation and so on) and the context is the hash of the last eight
+   classes: it says what kind of text this is, not which text.
+3. **A learning rate that decays** from fast to slow is worth 0.2 to 0.5%.
+4. **The rest is small:** SSE 0.06%, the update skip 0.12%, the flag
+   nothing at all. mcm's dictionary is worth 1.3% to mcm, where codec 5's
+   transform is worth 8.7% to ours (stage 7), and ranking it by count
+   rather than bytes saved changes nothing; T1 to T3 are not where the gap
+   is.
+
+A fixed rate at mcm's starting value, 382, diverged (271% larger) and is
+left out of the table.
 
 ## 2. The prototype
 
