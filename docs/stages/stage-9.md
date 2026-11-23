@@ -240,7 +240,110 @@ left out of the table.
 
 ## 2. The prototype
 
-*To be filled in by 9b.*
+A throwaway branch of `main` (local, never pushed), `ContextMix` patched
+behind environment switches that change only `Mix10Flag`; with every
+switch off it makes `words2`'s bytes. Patches and logs are in
+`H:\cpress-corpus\stage9\proto\`. Run on 23 November.
+
+**Sizes on `e30`,** each step on top of the one before:
+
+| Step | `e30`, bytes | Change from `words2` |
+|---|---|---|
+| `words2` | 5,998,210 | |
+| M4, a class context: the last 12 byte classes (16 classes, my own grouping, below) | 5,881,200 | −1.95% |
+| M1, weight sets per bit: class of the last byte × word length × match length × partial byte | 5,805,116 | −3.22% |
+| M2, learning rate from 218/16 of the base, down by 1/16 per update to the base | 5,792,910 | −3.42% |
+| a bias input, a constant 256 to the mixer | 5,782,379 | −3.60% |
+| APM 1 keyed by the last two classes as well as the partial byte | 5,775,660 | −3.71% |
+| a second class context, the last 6 classes | 5,743,494 | −4.25% |
+| weight sets by the classes of the last two bytes, not class × word length | 5,726,540 | −4.53% |
+
+Alone, against `words2`: M4 −1.95%; M1 −1.12% (class choice) or −0.63%
+(`words2`'s choice with the partial byte); M2 −0.02%, since `words2`'s 1,024
+weight sets each see millions of updates and a fast start matters only
+when there are 262,144. Tried and not taken:
+
+| Tried | Change on `e30` | Why not |
+|---|---|---|
+| a second mixer, weights chosen as `words2`'s per bit, and a final mixer of the two | −0.19% | 25% more time |
+| a third APM, order 2 hashed to 12 bits × partial byte | −0.17% | 13% more time |
+| table and map updates skipped when the mixer's error is under 10/4096 | −0.06% | +0.23% on `enwik9` |
+| the class contexts' length: 10 and 5, 14 and 6, 16 and 7 | within 0.2% of 12 and 6 | |
+| the class context also keyed by the last byte | +0.31% | |
+| T1 to T3 | not tried | section 1: mcm's dictionary differences are worth nothing to it |
+
+The classes, one per byte value: 0, control bytes (which include the
+transform's flags and escape); 1, line feed; 2, space; 3, digits; 4,
+lower case; 5, upper case; 6, 128 and up (the transform's codes and
+UTF-8); 7, `. ! ?`; 8, `, ; :`; 9, quotes; 10, parentheses; 11, square
+brackets; 12, `{ } |`; 13, `< > / \`; 14, `= & # *`; 15, the rest.
+
+**The orders, on `enwik9`.** Each of orders 6 and 7 is worth under 0.1%
+on `e30`, but not on `enwik9`:
+
+| Byte orders | `enwik9`, bytes |
+|---|---|
+| 1 to 7 | 144,212,605 |
+| 1 to 6 | 145,280,396 (+0.74%) |
+| 1 to 5 | 146,655,682 (+1.69%) |
+
+With orders 1 to 7, `enwik8` is 18,009,934 (−4.40%; mcm 18,234,412) and
+`enwik9` 144,212,605 (−4.81%), round trip checked. With the source zip,
+about 115,000 bytes, that is 144.33 million, under mcm's 144,934,149.
+
+**The class tables' size, on `enwik9`.** At the level's 2^25 slots each,
+the two class tables add 1,024 MiB, and the per-bit weights and APM 1's
+larger table 20 MiB, for about 5,280 MiB in all, under mcm's 5,961 MB
+(5,685 MiB).
+At 2^22 slots: 144,445,615 (+0.16%); at 2^20: 144,839,413 (+0.43%).
+
+**Time, on `enwik9`.** `cpress-bench --cpu 2 --repeat 1`, Windows, the
+machine otherwise idle, each configuration once, interleaved with
+`words2` built from `main`. The prototype's weight rows are aligned to a
+cache line and the next bit's row is prefetched; neither changes a byte.
+
+| Configuration | `enwik9`, bytes | Compress, ns/B | Decompress, ns/B |
+|---|---|---|---|
+| `words2` | 151,497,460 | 291.4 | 371.9 |
+| everything above but the class tables (9 tables, as `words2`) | 148,206,844 (−2.17%) | 322.8 (+11%) | 401.9 (+8%) |
+| one class table, the last 12 classes (10 tables) | 144,553,419 (−4.58%) | 367.1 (+26%) | 448.7 (+21%) |
+| both class tables (11 tables) | 144,212,605 (−4.81%) | 382.9 (+33%)* | 458.6 (+27%)* |
+
+\* In the round before, against `words2` at 288.7 and 362.2.
+
+`e30` misled about time. There each table is half a gigabyte of pages
+touched for the first time, and those faults dominate. On `enwik9`, the
+12-class table costs about 12% of `words2`'s decoding time and the 6-class
+table about 3%: it has far fewer contexts, so more of it stays in cache.
+The other changes cost 8%. A profile of the decoder on `enwik8` puts the
+model's own time in the tables' bucket search (11%), the prefetch loops
+(15%) and the maps and the mixer.
+
+Tried for time, without effect on `enwik9`: prefetching APM 1's next
+entry, and class tables of 2^22 slots, which also cost 0.16% in size.
+
+**What it means for the exit.** The size is in reach: with one class
+table, 144.55 million plus the source zip is about 260,000 bytes under
+mcm's total, and with two, about 600,000. The time is not. Compressing
+stays under 394 ns a byte, but decompressing is 21 to 27% slower than
+`words2`, against an exit that asks for no slower. By the benchmark's own
+rule the result would still be on both frontiers, since every smaller
+program decompresses at 898 ns a byte or slower. But it is a step back
+from `words2`, and further behind mcm's 281.
+
+That is the owner's decision, and the brief is not amended until it is
+made. The choices:
+
+1. **Keep the size target and allow the decode time:** one class table,
+   decompressing about 21% slower than `words2`, or two, about 27% slower.
+   9c then writes the design.
+2. **Keep the time bar and lower the target:** nothing measured here
+   gets past mcm without a new table layout first. Issue #19's
+   hash-once-per-byte layout, or something like it, would come first, as a
+   stage of its own, and is unmeasured.
+3. **Keep the time bar and take nanozip's mark:** without the class
+   tables, 148.2 million passes nanozip's 149.3 million (40th). Even that
+   decompresses 8% slower than `words2`.
 
 The candidates, in the order 9b tries them unless section 1 reorders
 them. Each changes `words2`'s predictions; each is measured for size on
@@ -279,7 +382,7 @@ Its name is decided with its design.
 
 ## Exit criteria
 
-- [ ] Section 1: mcm's parts ranked by what they are worth on `e30`.
+- [x] Section 1: mcm's parts ranked by what they are worth on `e30`.
 - [ ] Section 2: every candidate's size on `e30`; the combination's sizes
       on `e30`, `enwik8` and `enwik9`; its times on a quiet machine.
 - [ ] Section 3 written, and this brief amended if the target moved.
