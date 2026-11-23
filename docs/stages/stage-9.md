@@ -122,8 +122,8 @@ The prototype's patches and timings live outside the repository, under
 
 ## The choices
 
-Each has a real trade-off; the recommendation is what the rest of the
-brief assumes.
+Each has a real trade-off. The owner took every recommendation on
+2026-11-23, and the rest of the brief assumes them.
 
 **Which target.** Getting under mcm's total takes 4.41% off `words2`'s
 archive, once the source zip is counted; under nanozip's, 1.5%. Stage 7's
@@ -150,8 +150,7 @@ a local edit of a GPL-3.0 program, made and run on this machine for its
 sizes. No line of it is committed, published or copied into cpress;
 only the numbers are recorded, with the commit they came from.
 **Recommendation:** do it. It is the cheapest way to know which
-prototype to build first. *The owner decides; without it, 9b tries
-the candidates in the order section 2 gives.*
+prototype to build first.
 
 **How much memory.** mcm uses 5,961 MB; `words2` at level 25 uses
 4,236 MiB, and level 26 as it stands would double the history tables and
@@ -172,7 +171,7 @@ the model's additions need the time it gives back.
 
 ## 1. mcm, taken apart
 
-*To be filled in by 9a, if the owner approves it.*
+*To be filled in by 9a.*
 
 mcm 0.83 at `02b4e7d`, built by its own `make.sh` under WSL, as stage 7's
 sitting was. Each variant switches off or simplifies one part, then
@@ -227,8 +226,7 @@ Its name is decided with its design.
 
 ## Exit criteria
 
-- [ ] Section 1: mcm's parts ranked by what they are worth on `e30`, or
-      the owner's decision not to take it apart.
+- [ ] Section 1: mcm's parts ranked by what they are worth on `e30`.
 - [ ] Section 2: every candidate's size on `e30`; the combination's sizes
       on `e30`, `enwik8` and `enwik9`; its times on a quiet machine.
 - [ ] Section 3 written, and this brief amended if the target moved.
