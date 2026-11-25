@@ -164,17 +164,6 @@ struct Words {
 
 namespace detail {
 
-// Order n has 17 * 256^n keys: a first-nibble slot and sixteen
-// second-nibble slots per context. Twice that, rounded up to a power of
-// two, is all the slots it can use: log2 of that is returned.
-[[nodiscard]] constexpr int order_slot_bits(int order) noexcept {
-    const std::uint64_t keys = std::uint64_t{17} << (8 * order);
-    return std::bit_width((2 * keys) - 1);
-}
-
-static_assert(order_slot_bits(1) == 14);
-static_assert(order_slot_bits(2) == 22);
-
 // What a model without shortcuts holds in the flag model's place: nothing.
 struct NoFlagModel {
     explicit constexpr NoFlagModel(int /*table_bits*/) noexcept {}
@@ -210,7 +199,7 @@ public:
     // The level is log2 of the slots in each history table but order 1's.
     static constexpr int kMinLevel = 10;
     static constexpr int kMaxLevel = MaxLevel;
-    static_assert(detail::order_slot_bits(3) > kMaxLevel, "only orders 1 and 2 are capped");
+    static_assert(usable_slot_bits(3) > kMaxLevel, "only orders 1 and 2 are capped");
 
     // The smallest level with 2^level >= size, within the two limits: about
     // one slot per input byte in each table.
@@ -239,7 +228,7 @@ public:
     // slot is ever shared or evicted (mix9_test.cpp checks every key).
     [[nodiscard]] static constexpr int table_slot_bits(std::size_t table, int level) noexcept {
         if (table >= kOrderTables) return level;
-        return std::min(level, detail::order_slot_bits(static_cast<int>(table) + 1));
+        return std::min(level, usable_slot_bits(static_cast<int>(table) + 1));
     }
 
     // log2 of each flag table's entries at `level`: an eighth as many as a

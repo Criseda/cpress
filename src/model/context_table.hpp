@@ -28,6 +28,7 @@
 #include "model/counter.hpp"
 
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -57,6 +58,20 @@ inline constexpr int kMaxOrder = (64 - kMarkerBits) / 8;
     const std::uint64_t context = history & ((std::uint64_t{1} << (8 * order)) - 1);
     return (context << kMarkerBits) | marker;
 }
+
+// log2 of the most slots a table of `order` can use. A context of n bytes
+// makes one key for its first nibble and one for each of the kNibbleDone
+// markers of its second, so (1 + kNibbleDone) * 256^n keys. A table twice
+// that size, rounded up to a power of two, already has room for them all.
+[[nodiscard]] constexpr int usable_slot_bits(int order) noexcept {
+    assert(order >= 1 && order <= kMaxOrder);
+    constexpr std::uint64_t kKeysPerContext = 1 + kNibbleDone;
+    const std::uint64_t keys = kKeysPerContext << (8 * order);
+    return std::bit_width((2 * keys) - 1);
+}
+
+static_assert(usable_slot_bits(1) == 14);
+static_assert(usable_slot_bits(2) == 22);
 
 // 2^64 divided by the golden ratio. Multiplying by it and keeping the top
 // bits spreads keys that differ only in their low bits, as neighbouring

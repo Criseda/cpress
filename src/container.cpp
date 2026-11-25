@@ -1,6 +1,10 @@
+// The archive container: the header that every archive starts with, and
+// compress() and decompress() on whole buffers. See cpress.hpp for the
+// layout.
 #include "container.hpp"
 
 #include "cpress/cpress.hpp"
+#include "little_endian.hpp"
 
 #include <algorithm>
 #include <array>
@@ -11,25 +15,6 @@
 #include <string>
 
 namespace cpress {
-namespace {
-
-// Explicit little-endian serialisation: the format does not depend on the
-// host's byte order or struct layout.
-void put_le(std::span<std::uint8_t> out, std::uint64_t value) {
-    for (std::size_t i = 0; i < out.size(); ++i) {
-        out[i] = static_cast<std::uint8_t>(value >> (8 * i));
-    }
-}
-
-std::uint64_t get_le(ByteView in, std::size_t offset, int bytes) {
-    std::uint64_t value = 0;
-    for (int i = 0; i < bytes; ++i) {
-        value |= static_cast<std::uint64_t>(in[offset + static_cast<std::size_t>(i)]) << (8 * i);
-    }
-    return value;
-}
-
-}  // namespace
 
 namespace detail {
 
@@ -39,10 +24,10 @@ std::array<std::uint8_t, kHeaderSize> header_bytes(std::uint8_t codec_id,
     std::array<std::uint8_t, kHeaderSize> header{};  // the reserved field stays zero
     const std::span<std::uint8_t> bytes(header);
     std::ranges::copy(kMagic, bytes.begin());
-    header[4] = kFormatVersion;
-    header[5] = codec_id;
-    put_le(bytes.subspan(8, 8), original_size);
-    put_le(bytes.subspan(kCrcOffset, kCrcBytes), crc);
+    header[kVersionOffset] = kFormatVersion;
+    header[kCodecIdOffset] = codec_id;
+    store_little_endian(bytes.subspan(kOriginalSizeOffset, kOriginalSizeBytes), original_size);
+    store_little_endian(bytes.subspan(kCrcOffset, kCrcBytes), crc);
     return header;
 }
 
@@ -57,6 +42,7 @@ const Codec& codec_of(const Header& header) {
 }  // namespace detail
 
 Header read_header(ByteView archive) {
+    using namespace detail;
     if (archive.size() < kHeaderSize) {
         throw Error("not a cpress archive: shorter than the header");
     }
@@ -65,16 +51,18 @@ Header read_header(ByteView archive) {
     }
 
     Header header{};
-    header.version = archive[4];
-    header.codec_id = archive[5];
+    header.version = archive[kVersionOffset];
+    header.codec_id = archive[kCodecIdOffset];
     if (header.version != kFormatVersion) {
         throw Error("unsupported format version " + std::to_string(header.version));
     }
-    if (get_le(archive, 6, 2) != 0) {
+    if (load_little_endian(archive.subspan(kReservedOffset, kReservedBytes)) != 0) {
         throw Error("corrupt archive: reserved header field is not zero");
     }
-    header.original_size = get_le(archive, 8, 8);
-    header.crc32 = static_cast<std::uint32_t>(get_le(archive, 16, 4));
+    header.original_size =
+        load_little_endian(archive.subspan(kOriginalSizeOffset, kOriginalSizeBytes));
+    header.crc32 =
+        static_cast<std::uint32_t>(load_little_endian(archive.subspan(kCrcOffset, kCrcBytes)));
     return header;
 }
 

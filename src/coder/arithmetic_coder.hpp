@@ -50,6 +50,13 @@ inline constexpr std::uint32_t kTopByteMask = 0xFF000000u;
     return ((low ^ high) & kTopByteMask) == 0;
 }
 
+// Shifting a settled byte out. low and high are the first 32 bits of
+// numbers that go on for ever: low followed by zeros, high by ones, since
+// the interval includes high and everything just below it. So the byte that
+// shifts into view is 0x00 for low and 0xFF for high.
+inline constexpr std::uint32_t kLowShiftIn = 0x00u;
+inline constexpr std::uint32_t kHighShiftIn = 0xFFu;
+
 }  // namespace detail
 
 class Encoder {
@@ -74,8 +81,8 @@ public:
         }
         while (detail::top_byte_settled(low_, high_)) {
             output_->push_back(static_cast<std::uint8_t>(high_ >> 24));
-            low_ <<= 8;
-            high_ = (high_ << 8) | 0xFFu;
+            low_ = (low_ << 8) | detail::kLowShiftIn;
+            high_ = (high_ << 8) | detail::kHighShiftIn;
         }
         assert(low_ < high_);
     }
@@ -121,8 +128,8 @@ public:
             low_ = mid + 1;
         }
         while (detail::top_byte_settled(low_, high_)) {
-            low_ <<= 8;
-            high_ = (high_ << 8) | 0xFFu;
+            low_ = (low_ << 8) | detail::kLowShiftIn;
+            high_ = (high_ << 8) | detail::kHighShiftIn;
             code_ = (code_ << 8) | next_byte();
         }
         assert(low_ < high_);

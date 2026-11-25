@@ -15,7 +15,7 @@ namespace cpress::model {
 // significant bit first.
 inline constexpr int kProbBits = 12;
 inline constexpr std::uint32_t kProbOne = 1U << kProbBits;  // probability 1.0, never produced
-inline constexpr std::uint32_t kProbMax = 4095;
+inline constexpr std::uint32_t kProbMax = kProbOne - 1;
 inline constexpr std::uint32_t kProbMin = 1;
 
 // A model that predicts a stream of bits one at a time.

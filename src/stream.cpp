@@ -1,3 +1,5 @@
+// Streaming compression and decompression, file to file: each output is
+// written to a temporary file and renamed into place only once it is whole.
 #include "cpress/stream.hpp"
 
 #include "checked_stream.hpp"

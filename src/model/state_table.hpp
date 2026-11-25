@@ -43,6 +43,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace cpress::model {
 
@@ -147,7 +148,7 @@ struct State {
     std::uint8_t ones;
 };
 
-static_assert(kRunCap <= 0xFF);
+static_assert(kRunCap <= std::numeric_limits<std::uint8_t>::max());
 
 [[nodiscard]] constexpr std::array<State, kStateCount> compact_states() noexcept {
     std::array<State, kStateCount> states{};

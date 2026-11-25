@@ -1,3 +1,5 @@
+// The codec registry: every codec cpress knows, by id and name, and the
+// functions that run each one on whole buffers or as a stream.
 #include "codec/bitwise.hpp"
 #include "codec/buffer_stream.hpp"
 #include "codec/messages.hpp"
@@ -5,6 +7,7 @@
 #include "cpress/stream.hpp"
 #include "itch/message_model.hpp"
 #include "itch/order_table.hpp"
+#include "little_endian.hpp"
 #include "model/mix6.hpp"
 #include "model/mix9.hpp"
 #include "model/order0.hpp"
@@ -46,6 +49,9 @@ void stored_decode(ByteView payload, std::uint64_t original_size, Bytes& output)
 //
 // The functions below are written once for every such model, so the rules
 // for the level byte exist once. `Name` is the codec's name, for messages.
+
+// The level byte at the head of the payload.
+constexpr std::size_t kLevelBytes = 1;
 
 // What the level functions need of a model: that it is constructed from a
 // level, the limits on that level, and the two functions of it.
@@ -105,7 +111,7 @@ int level_of(ByteView payload) {
 template <LevelledModel Model, const std::string_view& Name>
 void levelled_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
     auto predictor = make_levelled_model<Model, Name>(level_of<Model, Name>(payload));
-    codec::decode_bitwise(predictor, payload.subspan(1), original_size, output);
+    codec::decode_bitwise(predictor, payload.subspan(kLevelBytes), original_size, output);
 }
 
 // Codec 2: orders 1 to 6, mixed.
@@ -125,7 +131,7 @@ std::atomic<std::uint64_t> g_evictions_recorded{0};
 void itch_encode_stream(ByteSource& input, std::uint64_t size, ByteSink& output) {
     const int level = itch::MessageModel::level_for_size(size);
     auto model = make_levelled_model<itch::MessageModel, kItchName>(level);
-    const std::array<std::uint8_t, 1> level_byte{static_cast<std::uint8_t>(level)};
+    const std::array<std::uint8_t, kLevelBytes> level_byte{static_cast<std::uint8_t>(level)};
     output.write(level_byte);
     static_cast<void>(codec::encode_messages(model, input, output));
     g_evictions_recorded += model.evictions();
@@ -135,7 +141,7 @@ void itch_encode_stream(ByteSource& input, std::uint64_t size, ByteSink& output)
 void itch_decode_stream(ByteView payload, std::uint64_t original_size, ByteSink& output) {
     const int level = level_of<itch::MessageModel, kItchName>(payload);
     auto model = make_levelled_model<itch::MessageModel, kItchName>(level);
-    codec::decode_messages(model, payload.subspan(1), original_size, output);
+    codec::decode_messages(model, payload.subspan(kLevelBytes), original_size, output);
 }
 
 // The same two on whole buffers.
@@ -170,27 +176,24 @@ void words_encode(ByteView input, Bytes& output) {
     const int level = Model::level_for_size(stream.size());
     auto predictor = make_levelled_model<Model, Name>(level);
     output.push_back(static_cast<std::uint8_t>(level));
-    const std::uint64_t size = stream.size();
-    for (std::size_t i = 0; i < kStreamSizeBytes; ++i) {
-        output.push_back(static_cast<std::uint8_t>(size >> (8 * i)));
-    }
+    std::array<std::uint8_t, kStreamSizeBytes> size{};
+    detail::store_little_endian(size, stream.size());
+    output.insert(output.end(), size.begin(), size.end());
     codec::encode_bitwise(predictor, stream, output);
 }
 
 template <LevelledModel Model, const std::string_view& Name>
 void words_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
     const int level = level_of<Model, Name>(payload);
-    if (payload.size() < 1 + kStreamSizeBytes) {
+    if (payload.size() < kLevelBytes + kStreamSizeBytes) {
         throw Error("corrupt archive: " + std::string(Name) +
                     " payload ends inside the stream size");
     }
-    std::uint64_t size = 0;
-    for (std::size_t i = 0; i < kStreamSizeBytes; ++i) {
-        size |= std::uint64_t{payload[1 + i]} << (8 * i);
-    }
+    const std::uint64_t size =
+        detail::load_little_endian(payload.subspan(kLevelBytes, kStreamSizeBytes));
     auto predictor = make_levelled_model<Model, Name>(level);
     Bytes stream;
-    codec::decode_bitwise(predictor, payload.subspan(1 + kStreamSizeBytes), size, stream);
+    codec::decode_bitwise(predictor, payload.subspan(kLevelBytes + kStreamSizeBytes), size, stream);
     text::inverse(stream, original_size, output);
 }
 

@@ -16,6 +16,7 @@ int main(int argc, char** argv) {
     // argc can be 0: the standard does not promise a program name.
     const std::span<const char* const> arguments(argv, static_cast<std::size_t>(argc));
     const auto files = arguments.subspan(std::min<std::size_t>(arguments.size(), 1));
+    run_little_endian_tests();
     run_coder_tests();
     run_order0_tests();
     run_logistic_tests();
