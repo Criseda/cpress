@@ -105,6 +105,7 @@ add_executable(cpress-tests
     tests/flag_model_test.cpp
     tests/golden_test.cpp
     tests/history_table_test.cpp
+    tests/little_endian_test.cpp
     tests/itch_sample.cpp
     tests/itch_schema_test.cpp
     tests/logistic_test.cpp

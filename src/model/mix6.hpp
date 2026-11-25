@@ -43,13 +43,9 @@ namespace cpress::model {
 namespace detail {
 
 // log2 of the slots in the table for `order` at `level`: the level, but
-// never more than twice the table's possible keys, rounded up to a power of
-// two. A context of n bytes has one first-nibble slot and sixteen
-// second-nibble slots, so 17 * 256^n keys.
+// never more than the order can use; see usable_slot_bits().
 [[nodiscard]] constexpr int slot_bits(int order, int level) noexcept {
-    constexpr std::uint64_t kSlotsPerContext = 1 + kNibbleDone;
-    const std::uint64_t keys = kSlotsPerContext << (8 * order);
-    return std::min(level, std::bit_width((2 * keys) - 1));
+    return std::min(level, usable_slot_bits(order));
 }
 
 }  // namespace detail

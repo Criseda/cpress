@@ -112,7 +112,7 @@ void report(const fs::path& from, const fs::path& to, std::uint64_t from_size,
               << "%), " << seconds << " s, codec " << codec << "\n";
 }
 
-int cmd_compress(const Options& options) {
+int run_compress(const Options& options) {
     if (options.paths.empty() || options.paths.size() > 2) {
         throw UsageError("c needs <input> and an optional [output]");
     }
@@ -141,7 +141,7 @@ int cmd_compress(const Options& options) {
     return 0;
 }
 
-int cmd_decompress(const Options& options) {
+int run_decompress(const Options& options) {
     if (options.paths.empty() || options.paths.size() > 2) {
         throw UsageError("d needs <archive> and an optional [output]");
     }
@@ -170,7 +170,7 @@ int cmd_decompress(const Options& options) {
     return 0;
 }
 
-int cmd_info(const Options& options) {
+int run_info(const Options& options) {
     if (options.paths.size() != 1) {
         throw UsageError("info needs exactly one <archive>");
     }
@@ -190,7 +190,7 @@ int cmd_info(const Options& options) {
     return 0;
 }
 
-int cmd_codecs() {
+int run_codecs() {
     for (const cpress::Codec& codec : cpress::codecs()) {
         std::cout << static_cast<int>(codec.id) << "  " << codec.name << "  " << codec.summary
                   << "\n";
@@ -216,10 +216,10 @@ int main(int argc, char** argv) {
 
     try {
         const Options options = parse(args);
-        if (options.command == "c") return cmd_compress(options);
-        if (options.command == "d") return cmd_decompress(options);
-        if (options.command == "info") return cmd_info(options);
-        if (options.command == "codecs") return cmd_codecs();
+        if (options.command == "c") return run_compress(options);
+        if (options.command == "d") return run_decompress(options);
+        if (options.command == "info") return run_info(options);
+        if (options.command == "codecs") return run_codecs();
         if (options.command.empty()) throw UsageError("no command given");
         throw UsageError("unknown command '" + options.command + "'");
     } catch (const UsageError& e) {

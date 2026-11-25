@@ -1,20 +1,16 @@
+// Whole-file reading and writing for the CLI, the tests and the benchmark.
 #include "cpress/io.hpp"
 
+#include "checked_stream.hpp"
+
+#include <cstddef>
+#include <cstdint>
 #include <fstream>
-#include <system_error>
 
 namespace cpress {
 
 Bytes read_file(const std::filesystem::path& path) {
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(path, ec)) {
-        throw Error("cannot read '" + path.string() + "': not a regular file");
-    }
-    const auto size = std::filesystem::file_size(path, ec);
-    if (ec) {
-        throw Error("cannot read '" + path.string() + "': " + ec.message());
-    }
-
+    const std::uint64_t size = detail::size_of_regular_file(path);
     std::ifstream in(path, std::ios::binary);
     if (!in) {
         throw Error("cannot open '" + path.string() + "'");

@@ -1,11 +1,10 @@
 # cpress
 
 A lossless compressor built on context mixing, written from scratch in C++20.
-It is a portfolio project: the quality of the code matters as much as the
-compression ratio.
+The quality of the code matters as much as the compression ratio.
 
-The code is written for a human reader first. Priorities, in order: correct,
-clear, fast. Aim for C++20 a careful engineer would enjoy reading: small
+Code has to be human readable. Must be correct,
+clear, fast. A C++20 senior engineer should enjoy reading it: small
 functions, honest names, invariants stated and checked, nothing clever
 without a reason. Code that works but is hard to follow is not done.
 
@@ -74,12 +73,10 @@ build/Release/cpress-bench corpus/enwik8        # build/cpress-bench off Windows
 ## Working style
 
 - A pull request lands as a few commits, ideally one. Do not split work into
-  many small commits. The project is young, so large diffs are normal; do not
-  spend effort on commit granularity.
+  many small commits.
 - Do not start the next roadmap stage, restructure existing code, or change
   the archive format unless asked.
 - When a design choice has a real trade-off, state it and the recommendation
   before writing code.
 - If a brief turns out to be wrong, amend it in the same commit as the code
   that departs from it, and say why.
-- No AI attribution in commits, pull requests or source files.

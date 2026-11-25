@@ -10,8 +10,15 @@
 
 namespace cpress::detail {
 
-// Where the CRC-32 of the original data is in the header; see cpress.hpp.
-inline constexpr std::size_t kCrcOffset = 16;
+// Where each header field is, as laid out in cpress.hpp. Each field starts
+// where the one before it ends, and the last ends at kHeaderSize.
+inline constexpr std::size_t kVersionOffset = kMagic.size();
+inline constexpr std::size_t kCodecIdOffset = kVersionOffset + 1;
+inline constexpr std::size_t kReservedOffset = kCodecIdOffset + 1;
+inline constexpr std::size_t kReservedBytes = 2;
+inline constexpr std::size_t kOriginalSizeOffset = kReservedOffset + kReservedBytes;
+inline constexpr std::size_t kOriginalSizeBytes = 8;
+inline constexpr std::size_t kCrcOffset = kOriginalSizeOffset + kOriginalSizeBytes;
 inline constexpr std::size_t kCrcBytes = 4;
 static_assert(kCrcOffset + kCrcBytes == kHeaderSize);
 
