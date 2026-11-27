@@ -134,6 +134,29 @@ Out of scope:
 - A neural mixer, or anything else at cmix's hundreds of times the time.
 - Sending the results to the benchmark. That is the owner's.
 
+## 1. The prototype
+
+First runs, 27 November, on stage 9's prototype builds (`H:\cp9`, local,
+never pushed), with codec 7's switches; every round trip checked by
+`cpress-bench --cpu 2 --repeat 1`, the machine not quiet, so the times
+are rough. With no switch added, the build makes codec 7's bytes.
+
+| Added to codec 7 | `e30`, bytes | Change | `enwik9`, bytes | Change | Compress ns/B | Decompress ns/B | Model, MiB |
+|---|---|---|---|---|---|---|---|
+| nothing (codec 7) | 5,729,199 | | 144,613,104 | | 344.7 | 409.0 | 4,756 |
+| a second mixer, averaged | 5,721,625 | −0.13% | | | | | |
+| a second mixer, weights chosen as `words2`'s per bit, and a final mixer of the two (C2) | 5,718,776 | −0.18% | | | | | |
+| a third APM, order 2 hashed to 12 bits × partial byte (C3) | 5,722,955 | −0.11% | | | | | |
+| C2 and C3 | 5,711,604 | −0.31% | 144,064,328 | −0.38% | 517.6 | 607.9 | 4,822 |
+| order 6 (C1) | 5,726,540 | −0.05% | | | | | |
+| C1, C2 and C3 | 5,707,888 | −0.37% | 143,662,948 | −0.66% | 558.5 | 652.9 | 5,334 |
+
+With the source zip, about 125,000 bytes, C2 and C3 alone come to about
+144.19 million, short of lpaq9m's 144,054,338; with C1 as well, about
+143.79 million, some 265,000 bytes under it, within both times and
+mcm's memory. The times on `e30` (not shown) rose more, as stage 9 found:
+there, page faults dominate.
+
 ## Files
 
 ```
