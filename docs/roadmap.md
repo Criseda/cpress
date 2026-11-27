@@ -246,7 +246,7 @@ mcm 0.83 is 4.4% smaller and decompresses faster. Under mcm's total of
   section 2). Done: `words3` makes `enwik9` in 144,613,104 bytes,
   144,734,323 with its source zipped, compressing at 344.7 ns a byte and
   decompressing at 409.0.
-- Tag `v1.3`.
+- Tag `v1.3`. Done; codec 7 is frozen there.
 
 ## After 1.0
 
