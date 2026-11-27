@@ -67,9 +67,8 @@ decompressing no slower than `words2`'s 366. The prototype found nothing
 that gets under mcm's total at that speed: every table the size needs
 costs decoding time, and the decoder's wait for memory, not the model's
 arithmetic, is most of the difference (section 2). The owner kept the
-size and allowed the time: codec 7 is expected to decompress about 14%
-slower than `words2`, near 415 ns a byte, against mcm's 347 on this
-machine. Paying that back is left for after the freeze, where it changes
+size and allowed the time: codec 7 decompresses 12% slower than
+`words2`, at 409 ns a byte, against mcm's 347 on this machine. Paying that back is left for after the freeze, where it changes
 no byte.
 
 ## Scope
@@ -476,6 +475,12 @@ context keyed by the last byte (larger), smaller class tables (larger,
 and no faster), shared cache lines (little time for their size), and
 guessed prefetching in the decoder (slower).
 
+**The record,** 27 November, at `a71d73c` (write-up, appendix, stage 9):
+`enwik9` compresses at 344.7 ns a byte and decompresses at 409.0, 18% and
+12% slower than `words2`, on Windows, the machine quiet. The source zip is
+121,219 bytes, so 144,734,323 in all, 199,826 under mcm's total. Codecs 3,
+5 and 6 are as fast as on `main`.
+
 ## Exit criteria
 
 - [x] Section 1: mcm's parts ranked by what they are worth on `e30`.
@@ -483,17 +488,17 @@ guessed prefetching in the decoder (slower).
       on `e30`, `enwik8` and `enwik9`; its times on a quiet machine.
 - [x] Section 3 written, and this brief amended if the target moved.
 - [x] Codec 7 makes the prototype's bytes on `e30` and `enwik8`.
-- [ ] `enwik9` with the source zipped under 144,934,149 bytes (or the
+- [x] `enwik9` with the source zipped under 144,934,149 bytes (or the
       amended target), round trip checked.
-- [ ] Tests: each new component's own; the level byte and the limits of
+- [x] Tests: each new component's own; the level byte and the limits of
       codec 7; the golden archives and checksums of codecs 1 to 6,
       unchanged.
-- [ ] CI green, the fuzz job included.
-- [ ] clang-format and clang-tidy clean, no compiler warnings.
-- [ ] The Windows record: compress under 394 ns a byte, decompress under
+- [x] CI green, the fuzz job included.
+- [x] clang-format and clang-tidy clean, no compiler warnings.
+- [x] The Windows record: compress under 394 ns a byte, decompress under
       898, on `enwik9`; codecs 3, 5 and 6 no slower than at `v1.2` on
       `e30`, if the driver or ContextMix changed.
-- [ ] The write-up, README, roadmap and `cpress.hpp` updated.
+- [x] The write-up, README, roadmap and `cpress.hpp` updated.
 - [ ] Tag `v1.3`, then a close-out pull request freezing codec 7 with its
       golden archive and checksums, as #18 and #21 did.
 

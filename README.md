@@ -77,13 +77,13 @@ Compression Benchmark's own, timed on other machines.*
 
 | Input | cpress | For comparison | Record |
 |---|---|---|---|
-| `enwik8`, the first 100 MB of English Wikipedia | **18,838,765 bytes**, 1.507 bits a byte (`words2`) | `mix9`: 19,687,838. lpaq1: 19,755,948, and slower on the same machine | [stage 8](docs/write-up.md#stage-8-codec-6-words2) |
-| `enwik9`, the first 1 GB | **151,497,460 bytes**, 1.212 bits a byte (`words2`) | `mix9`: 165,953,692. mcm 0.83: 144,854,575, slower compressing and faster decompressing | [stage 8](docs/write-up.md#stage-8-codec-6-words2) |
+| `enwik8`, the first 100 MB of English Wikipedia | **18,033,918 bytes**, 1.443 bits a byte (`words3`) | `mix9`: 19,687,838. mcm 0.83: 18,234,412 | [stage 9](docs/write-up.md#stage-9-codec-7-words3) |
+| `enwik9`, the first 1 GB | **144,613,104 bytes**, 1.157 bits a byte (`words3`) | `mix9`: 165,953,692. mcm 0.83: 144,854,575, about as fast compressing and faster decompressing | [stage 9](docs/write-up.md#stage-9-codec-7-words3) |
 | A NASDAQ ITCH day, 8.25 GB, 268,744,780 messages | **3.884 bytes a message** (`itch`) | Every field a column, each `zstd -19`: 8.036. `xz -9`: 9.261 | [stage 5](docs/write-up.md#stage-5-market-data) |
 | Another day, not used in design | **3.843 bytes a message** | The columns: 7.901 | [stage 5](docs/write-up.md#stage-5-market-data) |
 
-The price is speed: `words2` compresses `enwik9` at about 3.4 MB a second
-and decompresses it at 2.7, because the decoder must predict every bit
+The price is speed: `words3` compresses `enwik9` at about 2.9 MB a second
+and decompresses it at 2.4, because the decoder must predict every bit
 again. cpress is an archival tool, for files written once and read rarely.
 
 ## Quick start
@@ -314,7 +314,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 6 | Write-up and release | done: [the write-up](docs/write-up.md); `enwik9` 165,953,692 bytes, and 97,522 for the decompressor |
 | 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
 | 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | done: `words2`, `enwik9` 151,497,460 bytes and 112,714 for the decompressor, compressing 18% and decompressing 14% faster than `words` (target smaller than `words` and faster both ways) |
-| 9 | Past mcm 0.83: codec 7 | in progress: `words3` makes `enwik9` in 144,613,104 bytes; its speeds and `v1.3` to come (target under 144,934,149 bytes in all, compressing under 394 ns a byte and decompressing under 898) |
+| 9 | Past mcm 0.83: codec 7 | done, awaiting `v1.3`: `words3`, `enwik9` 144,613,104 bytes and 121,219 for the decompressor, 144,734,323 in all, compressing at 344.7 ns a byte and decompressing at 409.0 (target under 144,934,149 in all, compressing under 394 and decompressing under 898) |
 
 ## Layout
 

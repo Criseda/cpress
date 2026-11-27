@@ -223,7 +223,7 @@ than codec 5 and decompresses 14% faster, at 293 and 366 ns a byte.
 On this machine mcm 0.83 is still 4.4% smaller and decompresses faster;
 `words2` compresses faster.
 
-## Stage 9: past mcm (in progress)
+## Stage 9: past mcm (done)
 
 Brief: [stage-9.md](stages/stage-9.md).
 
@@ -243,8 +243,10 @@ mcm 0.83 is 4.4% smaller and decompresses faster. Under mcm's total of
   zipped, compressing under 394 ns a byte and decompressing under 898.
   The exit first asked for decompressing no slower than `words2`; nothing
   under mcm's size managed that, and the owner kept the size (brief,
-  section 2). `words3` makes `enwik9` in 144,613,104 bytes.
-- Its speeds on a quiet machine, then tag `v1.3`.
+  section 2). Done: `words3` makes `enwik9` in 144,613,104 bytes,
+  144,734,323 with its source zipped, compressing at 344.7 ns a byte and
+  decompressing at 409.0.
+- Tag `v1.3`.
 
 ## After 1.0
 
