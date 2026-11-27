@@ -77,10 +77,11 @@ a size is the same on any machine, where a time is each tester's own.
 **Memory.** The memory frontier and lpaq9m's size pull opposite ways with
 this table layout: every halving costs more than the 0.47% the size
 target needs. **Recommendation:** not the memory frontier in this stage.
-No more model memory than codec 7's 4,756 MiB, and a driver that streams
+No more model memory than mcm's 5,961 MB, stage 9's limit (order 6 back
+makes about 5,280 MiB), and a driver that streams
 rather than holds the input, the word stream and the output, which
 changes no byte and brings the listed memory to about the model's,
-under mcm's 5,961 MB. The frontier itself comes back with a denser table
+under mcm's. The frontier itself comes back with a denser table
 layout (After 1.0, issue #19), where it is a question of the layout and
 not of throwing away contexts.
 
@@ -150,7 +151,7 @@ The prototype's patches and timings live outside the repository, under
 - [ ] Section 1: every candidate's size on `e30`, and the combination's on
       `enwik8` and `enwik9`.
 - [ ] Codec 8: `enwik9` with the source zipped under 144,054,338 bytes,
-      round trip checked, with no more model memory than codec 7's.
+      round trip checked, with no more model memory than mcm's 5,961 MB.
 - [ ] The Windows record: compress under 868 ns a byte, decompress under
       898, the machine quiet.
 - [ ] Codecs 3, 5, 6 and 7 no slower than at `v1.3`.

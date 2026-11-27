@@ -261,7 +261,7 @@ smaller on a time frontier, durilca, is 11% smaller again.
   and the rates retuned.
 - Codec 8: under 144,054,338 bytes of `enwik9` with the source zipped,
   compressing under 868 ns a byte and decompressing under 898, with no
-  more model memory than codec 7's.
+  more model memory than mcm's 5,961 MB.
 - Tag `v1.4`.
 - If the owner takes it, a driver that streams its input and output, so
   that the listed memory is about the model's (no archive changes).
