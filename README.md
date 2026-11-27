@@ -315,6 +315,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
 | 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | done: `words2`, `enwik9` 151,497,460 bytes and 112,714 for the decompressor, compressing 18% and decompressing 14% faster than `words` (target smaller than `words` and faster both ways) |
 | 9 | Past mcm 0.83: codec 7 | done, `v1.3`: `words3`, `enwik9` 144,613,104 bytes and 121,219 for the decompressor, 144,734,323 in all, compressing at 344.7 ns a byte and decompressing at 409.0 (target under 144,934,149 in all, compressing under 394 and decompressing under 898) |
+| 10 | Up the frontier: codec 8 | in progress (target under 144,054,338 bytes of `enwik9` in all, drt\|lpaq9m's, compressing under 868 ns a byte and decompressing under 898) |
 
 ## Layout
 
