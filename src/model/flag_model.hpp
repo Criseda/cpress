@@ -25,7 +25,10 @@
 // under 8 KiB of maps and weights.
 //
 // Update rule: every input learns each outcome, the two entries move on by
-// it, and the mixer learns from its own prediction, as in Mix9.
+// it, and the mixer learns from its own prediction, as in Mix9. Codec 7's
+// flag model, BasicFlagModel<true>, has a mixer whose rate decays, as its
+// main mixer's does (mixer.hpp): the prototype's switch for the rate
+// changed every mixer, and codec 7 makes the prototype's bytes.
 //
 // Technique: coding the predicted byte as a flag before the byte is LZP
 // (Charles Bloom, "LZP: A New Data Compression Algorithm", Data Compression
@@ -51,7 +54,8 @@
 
 namespace cpress::model {
 
-class FlagModel {
+template <bool DecayingRate = false>
+class BasicFlagModel {
 public:
     // The limits on log2 of each table's entries.
     static constexpr int kMinTableBits = 1;
@@ -61,12 +65,12 @@ public:
         return (2 * (std::uint64_t{1} << table_bits)) +
                ProbabilityMap::memory_bytes(kOutcomeContexts) +
                (2 * ProbabilityMap::memory_bytes(kStateCount)) +
-               (kWeightSets * kInputs * sizeof(std::int32_t));
+               FlagMixer::memory_bytes(kWeightSets);
     }
 
     // Allocates two tables of 2^table_bits entries, every history empty.
     // Throws std::bad_alloc if there is no memory.
-    explicit FlagModel(int table_bits)
+    explicit BasicFlagModel(int table_bits)
         : near_(std::size_t{1} << table_bits),
           far_(std::size_t{1} << table_bits),
           table_shift_(64 - table_bits) {
@@ -82,7 +86,7 @@ public:
         const std::uint32_t length_class = detail::length_class(length);
         near_entry_ = entry(history, guess, kNearOrder, kNearKey);
         far_entry_ = entry(history, guess, kFarOrder, kFarKey);
-        Mixer<kInputs>::Stretched st{};
+        typename FlagMixer::Stretched st{};
         st[0] = stretch(by_outcomes_.p12((length_class * kOutcomeHistories) + recent_outcomes()));
         st[1] = stretch(near_map_.p12(near_[near_entry_]));
         st[2] = stretch(far_map_.p12(far_[far_entry_]));
@@ -134,6 +138,7 @@ private:
     static constexpr std::size_t kInputs = 4;
     static constexpr std::size_t kWeightSets = MatchModel::kLengthClasses;
     static constexpr std::int32_t kBias = kStretchOne;
+    using FlagMixer = Mixer<kInputs, DecayingRate>;
 
     // Every outcomes entry starts at one half.
     static constexpr std::array<std::uint32_t, kOutcomeContexts> kHalves = [] {
@@ -162,10 +167,13 @@ private:
     ProbabilityMap near_map_ = make_state_map();
     ProbabilityMap far_map_ = make_state_map();
     ProbabilityMap by_outcomes_{kHalves};  // length class and last outcomes -> P(hit)
-    Mixer<kInputs> mixer_{kWeightSets};
+    FlagMixer mixer_{kWeightSets};
     std::uint32_t outcomes_ = 0;  // every outcome so far, the newest in bit 0
     std::size_t near_entry_ = 0;  // the entries of the last predict()
     std::size_t far_entry_ = 0;
 };
+
+// Codec 6's flag model.
+using FlagModel = BasicFlagModel<>;
 
 }  // namespace cpress::model

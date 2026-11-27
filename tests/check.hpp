@@ -115,6 +115,7 @@ void run_logistic_tests();
 void run_counter_tests();
 void run_context_table_tests();
 void run_mixer_tests();
+void run_byte_classes_tests();
 void run_mix6_tests();
 void run_state_table_tests();
 void run_probability_map_tests();

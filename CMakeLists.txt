@@ -98,6 +98,7 @@ enable_testing()
 add_executable(cpress-tests
     tests/main.cpp
     tests/apm_test.cpp
+    tests/byte_classes_test.cpp
     tests/coder_test.cpp
     tests/context_table_test.cpp
     tests/counter_test.cpp

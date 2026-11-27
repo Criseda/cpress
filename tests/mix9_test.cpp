@@ -2,7 +2,8 @@
 // arithmetic, and the hints: they change no prediction, and the keys they
 // fetch for are the keys the model then selects. Then Mix10Flag's
 // shortcuts: when the flag is offered, what a hit and a miss do, and that
-// the hints change no byte of its output either.
+// the hints change no byte of its output either. Mix11's keys and hints
+// are held to the same tests.
 #include "check.hpp"
 
 #include "codec/bitwise.hpp"
@@ -25,6 +26,7 @@ namespace {
 
 using model::Mix10;
 using model::Mix10Flag;
+using model::Mix11;
 using model::Mix9;
 
 static_assert(model::Predictor<Mix9>);
@@ -61,6 +63,19 @@ static_assert(Mix10Flag::memory_bytes(25) ==
               Mix10::memory_bytes(25) + model::FlagModel::memory_bytes(22));
 static_assert(Mix10Flag::memory_bytes(10) == 4'559'804);
 static_assert(Mix10Flag::memory_bytes(25) == 4'442'229'436);
+
+// Mix11, codec 7's model: orders 1 to 7 without 6, word, bigram and the two
+// class tables; with the match and the bias, twelve inputs. Its mixer is
+// 16 MiB, its first APM 4 MiB, and its flag model's mixer a cache line per
+// set.
+static_assert(Mix11::kOrderOf == std::array{1, 2, 3, 4, 5, 7});
+static_assert(Mix11::kTables == 10 && Mix11::kInputs == 12);
+static_assert(Mix11::kMaxLevel == Mix10Flag::kMaxLevel);
+static_assert(Mix11::table_slot_bits(Mix11::kOrderOf.size() - 1, 24) == 24);  // order 7
+static_assert(Mix11::table_slot_bits(Mix11::kTables - 1, 25) == 25);          // a class table
+static_assert(Mix11::memory_bytes(10) == 25'622'992);
+static_assert(Mix11::memory_bytes(25) == 5'000'147'152);
+static_assert(Mix10::kOrderOf == std::array{1, 2, 3, 4, 5, 6, 7});
 
 // table_slot_bits: orders 1 and 2 capped, the rest at the level.
 static_assert(Mix9::table_slot_bits(0, Mix9::kMaxLevel) == 14);
@@ -220,8 +235,9 @@ void test_hints_change_no_prediction() {
 
 // Whether every table of `model` has selected the slot of its key in
 // `keys`: in the bucket locate() gives the key, with the key's check.
-bool selects(const Mix9& model, const std::array<std::uint64_t, Mix9::kTables>& keys) {
-    for (std::size_t i = 0; i < Mix9::kTables; ++i) {
+template <typename Model>
+bool selects(const Model& model, const std::array<std::uint64_t, Model::kTables>& keys) {
+    for (std::size_t i = 0; i < Model::kTables; ++i) {
         const model::HistoryTable& table = model.table(i);
         const model::HistoryTable::Location location = table.locate(keys.at(i));
         if (table.selected_slot() / model::HistoryTable::kWays != location.bucket ||
@@ -232,24 +248,47 @@ bool selects(const Mix9& model, const std::array<std::uint64_t, Mix9::kTables>& 
     return true;
 }
 
+// Whether two byte contexts are the same: the word keys follow from the
+// words.
+template <typename Context>
+bool same_context(const Context& a, const Context& b) {
+    return a.history == b.history && a.words.word == b.words.word &&
+           a.words.previous == b.words.previous && a.classes == b.classes;
+}
+
+// Starts coding `byte` as the bitwise driver does: a Flagging model may
+// code it as a flag first. Whether its bits follow.
+template <typename Model>
+bool start_byte(Model& model, std::uint8_t byte) {
+    if constexpr (model::Flagging<Model>) {
+        if (model.offer_flag()) {
+            const int hit = byte == model.guess() ? 1 : 0;
+            model.update_flag(hit);
+            return hit == 0;
+        }
+    }
+    return true;
+}
+
 // The keys are the keys. Before each byte, lookahead() from the true bytes,
 // which is what prefetch_after() fetches, names the slot every table then
 // selects at both nibbles of the byte after, and the context the model is
-// in when that byte starts.
+// in when that byte starts. A byte a flag codes selects no slots.
+template <typename Model>
 void test_prefetched_keys_are_the_keys_used() {
     for (const cpress::Bytes& data : hint_inputs()) {
-        Mix9 model(Mix9::kMinLevel);
-        std::optional<Mix9::Lookahead> ahead;  // for the byte about to be coded
+        Model model(Model::kMinLevel);
+        std::optional<typename Model::Lookahead> ahead;  // for the byte about to be coded
         bool first_nibbles = true;
         bool second_nibbles = true;
         bool contexts = true;
         for (std::size_t i = 0; i < data.size(); ++i) {
-            std::optional<Mix9::Lookahead> after;
+            std::optional<typename Model::Lookahead> after;
             if (i + 1 < data.size()) after = model.lookahead(data[i], data[i + 1]);
-            if (ahead) {
-                contexts = contexts && ahead->context.history == model.context().history &&
-                           ahead->context.words.word == model.context().words.word &&
-                           ahead->context.words.previous == model.context().words.previous;
+            if (ahead) contexts = contexts && same_context(ahead->context, model.context());
+            if (!start_byte(model, data[i])) {
+                ahead = after;
+                continue;
             }
             for (int shift = 7; shift >= 0; --shift) {
                 if (ahead && shift == 7)
@@ -267,31 +306,26 @@ void test_prefetched_keys_are_the_keys_used() {
     }
 }
 
-// Whether two byte contexts are the same: the word keys follow from the
-// words.
-bool same_context(const Mix9::ByteContext& a, const Mix9::ByteContext& b) {
-    return a.history == b.history && a.words.word == b.words.word &&
-           a.words.previous == b.words.previous;
-}
-
 // The decoder's candidates include what is used. After the bits
 // prefetch_decoded() waits for, the candidate the byte's next bit picks
 // is, for the second nibble, the slot every table selects, and, for the
 // next byte, the context the model is in when it starts.
+template <typename Model>
 void test_decoded_candidates_are_the_keys_used() {
-    static_assert(Mix9::kSecondNibbleBits < 4 && Mix9::kNextByteBits < 8);
+    static_assert(Model::kSecondNibbleBits < 4 && Model::kNextByteBits < 8);
     for (const cpress::Bytes& data : hint_inputs()) {
-        Mix9 model(Mix9::kMinLevel);
+        Model model(Model::kMinLevel);
         bool second_nibbles = true;
         bool next_bytes = true;
         for (const std::uint8_t byte : data) {
-            std::array<std::array<std::uint64_t, Mix9::kTables>, 2> nibbles{};
-            std::array<Mix9::ByteContext, 2> contexts{};
+            if (!start_byte(model, byte)) continue;
+            std::array<std::array<std::uint64_t, Model::kTables>, 2> nibbles{};
+            std::array<typename Model::ByteContext, 2> contexts{};
             for (int bits = 1; bits <= 8; ++bits) {
                 static_cast<void>(model.predict());
                 model.update((byte >> (8 - bits)) & 1);
-                if (bits == Mix9::kSecondNibbleBits) nibbles = model.second_nibble_candidates();
-                if (bits == Mix9::kNextByteBits) contexts = model.next_byte_candidates();
+                if (bits == Model::kSecondNibbleBits) nibbles = model.second_nibble_candidates();
+                if (bits == Model::kNextByteBits) contexts = model.next_byte_candidates();
                 if (bits == 4) {  // the second nibble's slots are selected now
                     const auto last_bit = static_cast<std::size_t>((byte >> 4) & 1);
                     second_nibbles = second_nibbles && selects(model, nibbles.at(last_bit));
@@ -417,8 +451,9 @@ void test_miss_forces_only_the_last_bit() {
     }
 }
 
-// Mix10Flag without its hints: Flagging, but not Prefetching, so the
-// driver gives it none.
+// A Flagging model without its hints: Flagging, but not Prefetching, so
+// the driver gives it none.
+template <typename Model>
 class Unhinted {
 public:
     explicit Unhinted(int level) : model_(level) {}
@@ -445,26 +480,27 @@ public:
     }
 
 private:
-    Mix10Flag model_;
+    Model model_;
 };
-static_assert(model::Flagging<Unhinted> && !model::Prefetching<Unhinted>);
+static_assert(model::Flagging<Unhinted<Mix10Flag>> && !model::Prefetching<Unhinted<Mix10Flag>>);
 
-// The hints change no byte. The driver gives Mix10Flag every hint, and its
-// flag a prefetch of its own; without them it codes the same payload, and
-// each decodes the other's.
+// The hints change no byte. The driver gives a Flagging model every hint,
+// and its flag a prefetch of its own; without them it codes the same
+// payload, and each decodes the other's.
+template <typename Model>
 void test_flag_hints_change_no_byte() {
     for (const cpress::Bytes& data :
          {repeated_sentence(16384), sample_text(16384), random_bytes(4096, 0x41)}) {
         cpress::Bytes hinted;
-        Mix10Flag encoder(Mix10Flag::kMinLevel);
+        Model encoder(Model::kMinLevel);
         codec::encode_bitwise(encoder, data, hinted);
         cpress::Bytes plain;
-        Unhinted plain_encoder(Mix10Flag::kMinLevel);
+        Unhinted<Model> plain_encoder(Model::kMinLevel);
         codec::encode_bitwise(plain_encoder, data, plain);
         CHECK(hinted == plain);
 
         cpress::Bytes decoded;
-        Unhinted decoder(Mix10Flag::kMinLevel);
+        Unhinted<Model> decoder(Model::kMinLevel);
         codec::decode_bitwise(decoder, hinted, data.size(), decoded);
         CHECK(decoded == data);
     }
@@ -478,12 +514,15 @@ void run_mix9_tests() {
     test_order2_cap_changes_nothing();
     test_next_words_matches_stage_3();
     test_hints_change_no_prediction();
-    test_prefetched_keys_are_the_keys_used();
-    test_decoded_candidates_are_the_keys_used();
+    test_prefetched_keys_are_the_keys_used<Mix9>();
+    test_prefetched_keys_are_the_keys_used<Mix11>();
+    test_decoded_candidates_are_the_keys_used<Mix9>();
+    test_decoded_candidates_are_the_keys_used<Mix11>();
     test_flag_waits_for_a_long_match();
     test_flag_hit_is_the_whole_byte();
     test_miss_forces_only_the_last_bit();
-    test_flag_hints_change_no_byte();
+    test_flag_hints_change_no_byte<Mix10Flag>();
+    test_flag_hints_change_no_byte<Mix11>();
 }
 
 }  // namespace cpress::test

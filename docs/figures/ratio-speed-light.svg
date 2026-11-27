@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="734" viewBox="0 0 760 734" role="img" aria-labelledby="title desc">
 <title id="title">Where cpress sits: size against speed on enwik8</title>
-<desc id="desc">Compressed size of enwik8 in megabytes against nanoseconds per byte, compressing and decompressing, log scale: mix6 22.5 MB, 356.3 and 392.6 ns/byte; mix9 19.7 MB, 454.9 and 575.7 ns/byte; words 18.8 MB, 374.1 and 475.9 ns/byte; words2 18.8 MB, 337.2 and 457.9 ns/byte; gzip 36.4 MB, 42.1 and 4.7 ns/byte; bzip2 29.0 MB, 45.4 and 23.4 ns/byte; zstd 25.3 MB, 702.1 and 1.6 ns/byte; xz 24.7 MB, 747.8 and 8.6 ns/byte; brotli 25.7 MB, 1504 and 2 ns/byte; 7-Zip PPMd 21.1 MB, 199.2 and 196.7 ns/byte; bsc 20.8 MB, 50.4 and 36.5 ns/byte; lpaq1 19.8 MB, 684 and 725.3 ns/byte; mcm 18.2 MB, 377.1 and 373.4 ns/byte; paq8px 15.8 MB, 291916 and 294847 ns/byte; nncp 14.9 MB, 241871 and 238670 ns/byte; cmix 14.6 MB, 622949 and 638442 ns/byte.</desc>
+<desc id="desc">Compressed size of enwik8 in megabytes against nanoseconds per byte, compressing and decompressing, log scale: mix6 22.5 MB, 356.3 and 392.6 ns/byte; mix9 19.7 MB, 454.9 and 575.7 ns/byte; words 18.8 MB, 374.1 and 475.9 ns/byte; words2 18.8 MB, 337.2 and 457.9 ns/byte; words3 18.0 MB, 385.9 and 516.7 ns/byte; gzip 36.4 MB, 42.1 and 4.7 ns/byte; bzip2 29.0 MB, 45.4 and 23.4 ns/byte; zstd 25.3 MB, 702.1 and 1.6 ns/byte; xz 24.7 MB, 747.8 and 8.6 ns/byte; brotli 25.7 MB, 1504 and 2 ns/byte; 7-Zip PPMd 21.1 MB, 199.2 and 196.7 ns/byte; bsc 20.8 MB, 50.4 and 36.5 ns/byte; lpaq1 19.8 MB, 684 and 725.3 ns/byte; mcm 18.2 MB, 377.1 and 373.4 ns/byte; paq8px 15.8 MB, 291916 and 294847 ns/byte; nncp 14.9 MB, 241871 and 238670 ns/byte; cmix 14.6 MB, 622949 and 638442 ns/byte.</desc>
 <style>text { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .num { font-variant-numeric: tabular-nums; }</style>
 <rect width="760" height="734" rx="8" fill="#fcfcfb"/>
 <text x="24" y="34" font-size="17" fill="#0b0b0b" font-weight="600">Where cpress sits: size against speed on enwik8</text>
@@ -67,14 +67,17 @@
 <circle cx="351" cy="282.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
 <circle cx="346.1" cy="282.3" r="5.5" fill="#fcfcfb"/>
 <circle cx="346.1" cy="282.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<circle cx="352.5" cy="289.1" r="5.5" fill="#fcfcfb"/>
+<circle cx="352.5" cy="289.1" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<text x="352.5" y="308.1" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">words3</text>
 <text x="337.1" y="286.3" font-size="12" fill="#0b0b0b" text-anchor="end" font-weight="600">words2</text>
-<text x="359" y="301.3" font-size="12" fill="#0b0b0b" font-weight="600">words</text>
+<text x="360" y="286.3" font-size="12" fill="#0b0b0b" font-weight="600">words</text>
 <text x="368.4" y="265.3" font-size="12" fill="#0b0b0b" font-weight="600">mix9</text>
 <text x="348.7" y="241.6" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">mix6</text>
 <text x="705.4" y="307.5" font-size="12" fill="#52514e" text-anchor="middle">cmix</text>
 <text x="651.2" y="319" font-size="12" fill="#52514e" text-anchor="end">nncp</text>
 <text x="669.2" y="297.3" font-size="12" fill="#52514e" text-anchor="middle">paq8px</text>
-<text x="343.4" y="306.4" font-size="12" fill="#52514e" text-anchor="end">mcm</text>
+<text x="360.4" y="291.4" font-size="12" fill="#52514e">mcm</text>
 <text x="388.9" y="278.7" font-size="12" fill="#52514e">lpaq1</text>
 <text x="264.3" y="270" font-size="12" fill="#52514e">bsc</text>
 <text x="312.9" y="253.8" font-size="12" fill="#52514e" text-anchor="end">7-Zip PPMd</text>
@@ -145,7 +148,10 @@
 <circle cx="362.5" cy="598.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
 <circle cx="360.7" cy="598.3" r="5.5" fill="#fcfcfb"/>
 <circle cx="360.7" cy="598.3" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
-<text x="368.7" y="617.3" font-size="12" fill="#0b0b0b" font-weight="600">words2</text>
+<circle cx="366.5" cy="605.1" r="5.5" fill="#fcfcfb"/>
+<circle cx="366.5" cy="605.1" r="4.5" fill="#2a78d6" stroke="#2a78d6" stroke-width="0"/>
+<text x="366.5" y="624.1" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">words3</text>
+<text x="369.7" y="602.3" font-size="12" fill="#0b0b0b" font-weight="600">words2</text>
 <text x="371.5" y="602.3" font-size="12" fill="#0b0b0b" font-weight="600">words</text>
 <text x="379.6" y="581.3" font-size="12" fill="#0b0b0b" font-weight="600">mix9</text>
 <text x="353.3" y="557.6" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="600">mix6</text>
