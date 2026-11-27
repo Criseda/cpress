@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="404" viewBox="0 0 760 404" role="img" aria-labelledby="title desc">
+<title id="title">One bit, from what came before to the archive</title>
+<desc id="desc">What came before feeds five models, each of which guesses the probability that the next bit is a 1. A mixer weighs the five guesses into one, two adjusting maps correct it, and the coder pays for the bit that came. Then every part learns from that bit.</desc>
+<style>text { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .num { font-variant-numeric: tabular-nums; }</style>
+<rect width="760" height="404" rx="8" fill="#fcfcfb"/>
+<text x="24" y="34" font-size="17" fill="#0b0b0b" font-weight="600">One bit, from what came before to the archive</text>
+<text x="24" y="56" font-size="13" fill="#52514e">Every bit goes round this loop, in the compressor and the decompressor alike.</text>
+<rect x="24" y="150" width="136" height="110" rx="6" fill="#f1f0ec" stroke="#c3c2b7" stroke-width="1"/>
+<text x="92" y="176" font-size="12" fill="#52514e" text-anchor="middle">What came before</text>
+<text x="92" y="210" font-size="14" fill="#0b0b0b" text-anchor="middle" style="font-family: ui-monospace, 'Cascadia Mono', Consolas, Menlo, monospace">…compressio</text>
+<text x="92" y="242" font-size="12" fill="#898781" text-anchor="middle">and the next bit?</text>
+<line x1="160" y1="205" x2="191.1" y2="124.5" stroke="#898781" stroke-width="1"/>
+<path d="M194 117L194.8 125.9L187.4 123Z" fill="#898781"/>
+<rect x="196" y="100" width="176" height="34" rx="6" fill="#f1f0ec" stroke="#c3c2b7" stroke-width="1"/>
+<text x="206" y="122" font-size="12" fill="#0b0b0b">The last byte</text>
+<text x="362" y="122" font-size="12" fill="#52514e" text-anchor="end" class="num">0.62</text>
+<line x1="372" y1="117" x2="397.8" y2="158.2" stroke="#898781" stroke-width="1"/>
+<path d="M402 165L394.4 160.3L401.2 156.1Z" fill="#898781"/>
+<line x1="160" y1="205" x2="189.1" y2="167.3" stroke="#898781" stroke-width="1"/>
+<path d="M194 161L192.3 169.8L185.9 164.9Z" fill="#898781"/>
+<rect x="196" y="144" width="176" height="34" rx="6" fill="#f1f0ec" stroke="#c3c2b7" stroke-width="1"/>
+<text x="206" y="166" font-size="12" fill="#0b0b0b">The last 2 to 7 bytes</text>
+<text x="362" y="166" font-size="12" fill="#52514e" text-anchor="end" class="num">0.97</text>
+<line x1="372" y1="161" x2="395.8" y2="180" stroke="#898781" stroke-width="1"/>
+<path d="M402 185L393.3 183.1L398.3 176.9Z" fill="#898781"/>
+<line x1="160" y1="205" x2="186" y2="205" stroke="#898781" stroke-width="1"/>
+<path d="M194 205L186 209L186 201Z" fill="#898781"/>
+<rect x="196" y="188" width="176" height="34" rx="6" fill="#f1f0ec" stroke="#c3c2b7" stroke-width="1"/>
+<text x="206" y="210" font-size="12" fill="#0b0b0b">The word so far</text>
+<text x="362" y="210" font-size="12" fill="#52514e" text-anchor="end" class="num">0.93</text>
+<line x1="372" y1="205" x2="394" y2="205" stroke="#898781" stroke-width="1"/>
+<path d="M402 205L394 209L394 201Z" fill="#898781"/>
+<line x1="160" y1="205" x2="189.1" y2="242.7" stroke="#898781" stroke-width="1"/>
+<path d="M194 249L185.9 245.1L192.3 240.2Z" fill="#898781"/>
+<rect x="196" y="232" width="176" height="34" rx="6" fill="#f1f0ec" stroke="#c3c2b7" stroke-width="1"/>
+<text x="206" y="254" font-size="12" fill="#0b0b0b">The word before</text>
+<text x="362" y="254" font-size="12" fill="#52514e" text-anchor="end" class="num">0.88</text>
+<line x1="372" y1="249" x2="395.8" y2="230" stroke="#898781" stroke-width="1"/>
+<path d="M402 225L398.3 233.1L393.3 226.9Z" fill="#898781"/>
+<line x1="160" y1="205" x2="191.1" y2="285.5" stroke="#898781" stroke-width="1"/>
+<path d="M194 293L187.4 287L194.8 284.1Z" fill="#898781"/>
+<rect x="196" y="276" width="176" height="34" rx="6" fill="#f1f0ec" stroke="#c3c2b7" stroke-width="1"/>
+<text x="206" y="298" font-size="12" fill="#0b0b0b">The longest repeat</text>
+<text x="362" y="298" font-size="12" fill="#52514e" text-anchor="end" class="num">0.99</text>
+<line x1="372" y1="293" x2="397.8" y2="251.8" stroke="#898781" stroke-width="1"/>
+<path d="M402 245L401.2 253.9L394.4 249.7Z" fill="#898781"/>
+<rect x="404" y="150" width="96" height="110" rx="6" fill="#dde9f8" stroke="#2a78d6" stroke-width="1"/>
+<text x="452" y="194" font-size="14" fill="#0b0b0b" text-anchor="middle" font-weight="600">Mixer</text>
+<text x="452" y="214" font-size="12" fill="#52514e" text-anchor="middle">weighs the</text>
+<text x="452" y="230" font-size="12" fill="#52514e" text-anchor="middle">five guesses</text>
+<line x1="500" y1="205" x2="530" y2="205" stroke="#52514e" stroke-width="1.5"/>
+<path d="M538 205L530 209L530 201Z" fill="#52514e"/>
+<text x="520" y="197" font-size="12" fill="#52514e" text-anchor="middle" class="num">0.97</text>
+<rect x="540" y="170" width="84" height="70" rx="6" fill="#f1f0ec" stroke="#c3c2b7" stroke-width="1"/>
+<text x="582" y="201" font-size="14" fill="#0b0b0b" text-anchor="middle" font-weight="600">Adjust</text>
+<text x="582" y="221" font-size="12" fill="#52514e" text-anchor="middle">two APMs</text>
+<line x1="624" y1="205" x2="654" y2="205" stroke="#52514e" stroke-width="1.5"/>
+<path d="M662 205L654 209L654 201Z" fill="#52514e"/>
+<text x="644" y="197" font-size="12" fill="#52514e" text-anchor="middle" class="num">0.98</text>
+<rect x="664" y="150" width="72" height="110" rx="6" fill="#f1f0ec" stroke="#c3c2b7" stroke-width="1"/>
+<text x="700" y="194" font-size="14" fill="#0b0b0b" text-anchor="middle" font-weight="600">Coder</text>
+<text x="700" y="214" font-size="12" fill="#52514e" text-anchor="middle">pays</text>
+<text x="700" y="230" font-size="12" fill="#52514e" text-anchor="middle">−log₂ p bits</text>
+<line x1="720" y1="260" x2="720" y2="292" stroke="#52514e" stroke-width="1.5"/>
+<path d="M720 300L716 292L724 292Z" fill="#52514e"/>
+<text x="736" y="318" font-size="12" fill="#0b0b0b" text-anchor="end">archive</text>
+<path d="M684 260L684 348L284 348" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round"/>
+<line x1="284" y1="348" x2="284" y2="320" stroke="#2a78d6" stroke-width="1.5"/>
+<path d="M284 312L288 320L280 320Z" fill="#2a78d6"/>
+<line x1="452" y1="348" x2="452" y2="270" stroke="#2a78d6" stroke-width="1.5"/>
+<path d="M452 262L456 270L448 270Z" fill="#2a78d6"/>
+<line x1="582" y1="348" x2="582" y2="250" stroke="#2a78d6" stroke-width="1.5"/>
+<path d="M582 242L586 250L578 250Z" fill="#2a78d6"/>
+<text x="280" y="376" font-size="12" fill="#52514e">Then the bit that came is shown to every part, and each learns from it.</text>
+<text x="24" y="396" font-size="12" fill="#898781">The probabilities are an example: each says how likely the next bit is to be a 1.</text>
+</svg>
