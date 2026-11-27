@@ -4,33 +4,47 @@
 >
 > Matt Mahoney, *Data Compression Explained*, section 1.5 [[1]](#references)
 
-cpress is a lossless compressor written from scratch in C++20, with no
-dependencies. It was built in seven stages, each ending in a number. This
-document explains it from the bottom up: what each part does, why it is
-there, and what it is worth, measured. It ends with where cpress sits among
-other compressors.
+cpress makes files smaller and gives back exactly the bytes it was given:
+it is a *lossless* compressor. It is written from scratch in C++20, with no
+dependencies, and it was built in stages, each ending in a measured number.
+This document explains it from the bottom up: what each part does, why it
+is there, and how much smaller it makes a file. It ends with where cpress
+sits among other compressors, and why it is not built on a large language
+model.
+
+**How to read this.** It assumes programming and no knowledge of
+compression. Each idea is explained in plain words first, then given the
+name it has in the field, in bold, so a reader who knows the field can
+skim for the names. [The design on one page](#the-design-on-one-page) is
+enough to follow any later section, and
+[the words used](#words-used-in-this-document), at the end, are there for
+a reader who starts in the middle. Each design that shipped is a *codec*
+with a name, `order0`, `mix6`, `mix9`, `itch`, `words` and `words2`, and
+an archive records which codec made it.
 
 The project has two results, and the second is the sentence above.
 
-- **Text.** On `enwik8`, the first 100 MB of English Wikipedia, cpress's
-  byte model makes 19,687,838 bytes: 1.575 bits a byte. That is the class
-  of Matt Mahoney's lpaq1, and 0.3% smaller than lpaq1 itself
-  [[2]](#references). Told what a word is, and given an order-7 table
-  and more memory, the same engine makes 18,846,644, and on `enwik9`, the
-  first gigabyte, 151,906,618: 8.5% smaller than the byte model, and
-  faster.
-- **Market data.** On a whole day of the NASDAQ TotalView-ITCH 5.0 feed,
-  8.25 GB and 268,744,780 messages, cpress makes 3.884 bytes a message.
-  That is 52% smaller than the best a careful engineer gets without a
-  model: every field split into a column of its own and each column
-  compressed with zstd. On a second day, not looked at while designing,
-  51%.
+- **Text.** `enwik8`, the first 100 MB of English Wikipedia, is the file
+  text compressors are most often compared on. cpress makes it
+  18,838,765 bytes, under a fifth of its size: each byte of the input
+  costs 1.507 bits of archive on average, where it took 8. On `enwik9`,
+  the first gigabyte, it makes 151,497,460. Its first design at that
+  level, `mix9`, made `enwik8` 19,687,838 bytes, 0.3% smaller than lpaq1,
+  the well-known program of the same kind it follows
+  [[2]](#references).
+- **Market data.** A whole day of NASDAQ's TotalView-ITCH feed, the
+  record of every order placed, changed and taken off one exchange, is
+  8.25 GB in 268,744,780 messages. cpress makes it 3.884 bytes a
+  message. That is 52% smaller than the best a careful engineer gets
+  without a model: every field split into a column of its own and each
+  column compressed with zstd, a widely used general-purpose compressor.
+  On a second day, not looked at while designing, 51%.
 
-The two results share an engine. The same arithmetic coder, the same
-tables of bit histories, the same mixer turn text and market data into
-bits. What differs is what the model knows. Given bytes, the text model
-makes 8.12 bytes of each ITCH message; given the orders the messages
-describe, the same engine makes 3.93.
+The two results share an engine. The same coder, the same tables, the
+same mixer, all explained below, turn text and market data into bits.
+What differs is what the model knows. Given the feed as bytes, the text
+design makes 8.12 bytes of each ITCH message; given the orders the
+messages describe, the same engine makes 3.93.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/understanding-dark.svg">
@@ -46,6 +60,7 @@ machine, and how. Every number about another program cites its source.
 
 ## Contents
 
+- [The design on one page](#the-design-on-one-page)
 1. [Compression is prediction](#1-compression-is-prediction)
 2. [Many guesses, one answer](#2-many-guesses-one-answer)
 3. [Remembering more than a count](#3-remembering-more-than-a-count)
@@ -55,8 +70,52 @@ machine, and how. Every number about another program cites its source.
 7. [Where cpress sits](#7-where-cpress-sits)
 8. [Why it can be trusted](#8-why-it-can-be-trusted)
 9. [What is left](#9-what-is-left)
-10. [Appendix: the measurements](#appendix-the-measurements)
-11. [References](#references)
+- [Words used in this document](#words-used-in-this-document)
+- [Appendix: the measurements](#appendix-the-measurements)
+- [References](#references)
+
+## The design on one page
+
+Imagine reading a text one letter at a time and guessing each letter
+before seeing it. After `compressio`, almost anyone would bet on `n`. A
+good guess is cheap to write down and a bad one is expensive, so a
+program that guesses well can store the text in far fewer bits than the
+text has. That is the whole idea; the rest is how to guess well, fast.
+
+cpress guesses one bit at a time, eight to a byte, and every bit goes
+round the same loop:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/pipeline-dark.svg">
+  <img alt="What came before feeds five models: the last byte, the last 2 to 7 bytes, the word so far, the word before, and the longest repeat. Each gives a probability that the next bit is a 1. A mixer weighs them into one, two adjusting maps correct it, and the coder pays for the bit that came. Then every part learns from that bit." src="figures/pipeline-light.svg">
+</picture>
+
+1. **What came before.** The compressor has read part of the file. The
+   decompressor has rebuilt the same part. Both see the same history.
+2. **Several guesses.** Small models each look at the history their own
+   way: the last byte, the last few bytes, the word being spelled, the
+   word before it, the last time these bytes appeared. Each gives a
+   probability that the next bit is a 1.
+3. **One guess.** A mixer combines them into one probability, trusting
+   most the models that have lately been right in this kind of place.
+   Two small maps then correct it where it is known to be off.
+4. **Paying.** The coder writes the bit using about −log₂ *p* bits, where
+   *p* is the probability the guess gave the bit that came: almost
+   nothing when the guess was confident and right, a lot when it was
+   confident and wrong.
+5. **Learning.** Every model, the mixer and the maps are shown the true
+   bit, and each adjusts. Nothing is learned in advance: every table
+   starts empty, and everything cpress knows about a file it learns from
+   that file, as it goes.
+
+The decompressor runs the same loop. It has the same history and the same
+code, so before each bit it computes the same probability, and from that
+probability and what the coder wrote it reads the bit back. So the
+archive holds no copy of the model: each side builds its own.
+
+Sections 1 to 3 take these parts in turn. Section 4 is about speed.
+Sections 5 and 6 give the model a better view of the data, which is where
+the largest gains came from.
 
 ## 1. Compression is prediction
 
@@ -66,13 +125,35 @@ size or grow [[1]](#references). A compressor wins on files where some
 things are more likely than others, and it wins by knowing which.
 
 Claude Shannon showed in 1948 that an event of probability *p* can be
-coded in −log₂ *p* bits, and no fewer on average [[3]](#references). An
-arithmetic coder comes within a fraction of a bit of that over a whole
-file [[4]](#references). So a compressor is two things: a model, which
-says how likely each possibility is, and a coder, which charges for what
+written in −log₂ *p* bits, and no fewer on average [[3]](#references).
+A fair coin toss, *p* = ½, takes 1 bit; an event that happens nine times
+in ten takes 0.15. So a compressor is two things: a **model**, which says
+how likely each possibility is, and a **coder**, which charges for what
 happens. As *Data Compression Explained* puts it, "Coding is a solved
-problem. Modeling is provably not solvable" [[1]](#references). The rest
-of this document is about the model.
+problem. Modeling is provably not solvable" [[1]](#references). Most of
+this document is about the model.
+
+**The coder.** Think of the archive as one long binary fraction between
+0 and 1. Before the first bit, any value is possible. The model's
+probability splits that range in two, a part for a 1 and a part for a 0,
+in proportion. The bit that came picks its part, and the next bit splits
+that part again. At the end of the file a narrow range is left, as wide
+as the probabilities of all the bits that came, multiplied together.
+Naming a number inside a range of width *w* takes about −log₂ *w* bits,
+which is the sum of −log₂ *p* over every bit. So the archive is as long
+as the costs of its bits added up, to within a few bytes over a whole
+file [[4]](#references).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/coder-dark.svg">
+  <img alt="Three bits narrow the interval from 0 to 1. Bit 1, P(1) 0.8, is a 1 and costs 0.32 bits; bit 2, P(1) 0.9, is a 1 and costs 0.15; bit 3, P(1) 0.7, is a 0 and costs 1.74. What is left is 0.216 of the start, and −log2 0.216 is 2.21 bits, the sum of the costs." src="figures/coder-light.svg">
+</picture>
+
+This is a **binary arithmetic coder**. cpress's keeps the range as two
+32-bit integers, `low` and `high`, after the coder of Mahoney's lpaq and
+paq8 family. A 1 takes the lower part, a 0 the upper. Once the top byte
+of `low` and `high` agree, no later bit can change it, so it is written
+out and the range is scaled up by 256.
 
 cpress predicts one bit at a time. Each byte is eight bits, most
 significant first, and before each bit the model gives the probability
@@ -97,50 +178,75 @@ probability for every bit, on every machine, or the archive is garbage. So
 the model uses no floating point anywhere; every probability and weight is
 a fixed-point integer (section 8).
 
-**The coder** is a binary arithmetic coder with 32 bits of state, after
-the coder of Mahoney's lpaq and paq8 family. It keeps an interval
-`[low, high]` and splits it in proportion to the probability: a 1 takes the
-lower part, a 0 the upper. Each bit narrows the interval. When the top
-byte of `low` and `high` agree, it can never change again, so it is
-written out and the interval is scaled up by 256.
+**The same idea as a language model.** A large language model is trained
+to predict the next piece of text, and its training lowers the average of
+−log *p* over the text it is shown: the cost the coder charges, in
+another unit. So any such model, put in front of an arithmetic coder, is
+a compressor, and a better predictor makes a smaller file. cpress differs
+in what does the predicting: many small models that learn from the file
+itself, in place of one large network trained in advance. Section 7 says
+why that matters.
 
-**The simplest model** is order 0. It predicts each bit from the bits of
-the current byte seen so far, and from nothing before the byte. That is 255
-contexts, each holding a probability that moves 1/32 of the way towards
-every bit it sees: 512 bytes of model, which learns how common each byte
-value is. On `enwik8` it makes 61,263,585 bytes, 4.90 bits a byte. Knowing
-only that `e` is common and `}` is rare saves 39%.
+**The simplest model** looks at nothing before the current byte. It
+predicts each bit from the bits of the same byte already coded, so the
+first bit of every byte is predicted from nothing, the second from the
+first, and so on. What a model looks at is its **context**; this one has
+length zero, so it is the **order-0** model. It has 255 contexts, one for
+each run of 0 to 7 bits a byte can start with, each holding a probability
+that moves 1/32 of the way towards every bit it sees: 512 bytes of model,
+which learns how common each byte value is. On `enwik8` it makes
+61,263,585 bytes, 4.90 bits a byte. Knowing only that `e` is common and
+`}` is rare saves 39%.
 
 ## 2. Many guesses, one answer
 
 The order-0 model knows which letters are common. It does not know that
-after `compressio` comes `n`. That is a context: what came before. A model
-of order *n* predicts the next bit from the last *n* bytes and what
-followed them the last times they occurred.
+after `compressio` comes `n`. For that a model must look back: a model
+whose context is the last *n* bytes is an **order-*n*** model. It
+predicts the next bit from what followed those *n* bytes the last times
+they occurred.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/contexts-dark.svg">
+  <img alt="The text 'of data compressio' with the next byte unknown. The last byte, o, is followed by almost any letter; the last 3 bytes, sio, are nearly always followed by n; the last 6 bytes, ressio, are followed by n every time." src="figures/contexts-light.svg">
+</picture>
 
 Contexts of different lengths are good at different things. A short
-context has been seen often, so it knows its statistics well, but it says
+context has been seen often, so its statistics are reliable, but it says
 little. A long context says a lot when it has been seen at all, and often
 it has not. Stage 2 runs six of them, orders 1 to 6, and has each predict
 every bit.
 
-**Tables.** There are far too many contexts of six bytes to give each its
-own entry, so a context is hashed to a slot in a table, and two contexts
-that land on one slot share it. A slot holds the predictions for half a
-byte, a nibble: the fifteen nodes of the binary tree over its four bits.
-So a table is looked up twice a byte, not eight times, and the four bits
-of a nibble share one trip to memory. Each node holds a counter, a
-probability that adapts fast while it has seen little and slowly once it
-has seen a lot.
+**Tables.** Each model must remember, for every context it meets, what
+followed it. There are far too many contexts of six bytes to give each a
+place of its own, so each context is turned into a number by a **hash
+function**, and the number picks a **slot** in a table of fixed size. Two
+contexts that land on one slot share it, and each sees the other's bits
+as noise. A slot holds the predictions for half a byte, a **nibble**: the
+fifteen points at which a decision is made about one of its four bits,
+one for the first bit, two for the second, four for the third and eight
+for the fourth. So a table is looked up twice a byte, not eight times,
+and the four bits of a nibble share one trip to memory. Each point holds
+a **counter**, a probability that adapts fast while it has seen little and
+slowly once it has seen a lot.
 
 **Mixing.** Six predictions of one bit have to become one. Averaging them
 throws information away: one model that is sure, at 0.999, averaged with
-five that know nothing, at 0.5, gives 0.58. The fix is to work in a
-different scale. The *stretch* of a probability,
-ln(*p* / (1 − *p*)), measures evidence: one half stretches to 0, no
-evidence either way, and 0.999 to about +7. Evidence from separate sources
-adds. So the mixer adds the stretched predictions, each times a weight,
-and *squashes* the sum back into a probability:
+five that know nothing, at 0.5, gives 0.58. The fix is to measure each
+prediction as evidence rather than as a probability. The **stretch** of a
+probability, ln(*p* / (1 − *p*)), does that. One half stretches to 0, no
+evidence either way; 0.9 to 2.2; 0.999 to 6.9. Near certainty a small
+step in probability is a large step in evidence, which is what lets one
+sure model outweigh five unsure ones.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/stretch-dark.svg">
+  <img alt="The curve of stretch(p) = ln(p / (1 - p)) for p from 0 to 1: 0.1 stretches to -2.2, 0.5 to 0, 0.9 to 2.2 and 0.999 to 6.9." src="figures/stretch-light.svg">
+</picture>
+
+Evidence from separate sources adds. So the **mixer** multiplies each
+stretched prediction by a weight, adds them up, and turns the sum back
+into a probability with **squash**, the inverse of stretch:
 
     p = squash(Σ wᵢ · stretch(pᵢ))
 
@@ -151,14 +257,17 @@ moves in proportion to its input and to the error of the mix:
 
 An input that argued for the bit that came gains weight; one that argued
 against it loses weight. This is one step of gradient descent on the cost
-of coding the bit, −log *p*. Mixing in this domain came from Mahoney's
+of coding the bit, −log *p*. In the terms of machine learning, the mixer
+is a single neuron, logistic regression, trained online on the same loss
+a language model is trained on. Mixing in this domain came from Mahoney's
 PAQ7; training the weights on coding cost goes back to PAQ6
 [[5]](#references) [[1]](#references).
 
-**Weight sets.** Which order deserves trust changes from byte to byte.
+**Weight sets.** Which model deserves trust changes from byte to byte.
 After a space, the long contexts know little; in the middle of a word,
-they know a lot. So the mixer keeps 256 sets of weights, one for each
-value of the previous byte, and uses and trains only that set.
+they know a lot. So the mixer keeps 256 **weight sets**, one for each
+value of the previous byte, and for each bit uses and trains only the set
+the previous byte picks.
 
 `stretch` and `squash` are tables computed at compile time by integer
 arithmetic, so every compiler builds the same ones.
@@ -178,25 +287,28 @@ is a slot where each sees the other's bits as noise.
 
 ## 3. Remembering more than a count
 
-Stage 3 is the lpaq class of compressor, after lpaq1 [[2]](#references).
-It changes what a context remembers, and adds three models that are not
-contexts of fixed length.
+Stage 3 brings cpress to the class of lpaq1, Matt Mahoney's small and fast
+context mixer of 2007 [[2]](#references). It changes what a context
+remembers, and adds three models whose context is not the last few bytes.
 
 **Bit histories.** A stage 2 counter says what the bits in its context
 averaged to. It does not say how much evidence the average rests on, or
-whether the bits just changed their mind. Stage 3 keeps a *state* instead:
-how many zeros and how many ones the context has seen, in one byte, with
-the count of the other bit roughly halved whenever a bit arrives. A
-context that switches behaviour settles on the new one within a few bits. What a state
-means is left to a table learned beside each context table, a *state map*,
-and the same state can mean different things in different tables: three
-ones and no zeros is strong evidence after six bytes of context and weak
+whether the bits just changed their mind. Stage 3 keeps a short summary
+of the history instead: roughly how many 0s and how many 1s the context
+has seen, packed into one byte, with the count of the other bit roughly
+halved whenever a bit arrives. A context that changes its behaviour is
+believed again within a few bits. The summary is a **bit-history
+state**. What a state means is learned, not fixed: beside each table a
+small second table, a **state map**, learns how often a 1 followed each
+state. The same state can mean different things in different tables:
+three 1s and no 0s is strong evidence after six bytes of context and weak
 evidence after one. There are 181 states, generated from the rule at
 compile time.
 
-**Checked slots.** A slot now carries an 8-bit check of its context, and
-four slots share a 64-byte bucket, one cache line. A context takes the
-slot whose check matches, or clears the one that has learned least. Two
+**Checked slots.** A slot now also stores 8 bits of its context's hash, a
+**check**, and four slots share a 64-byte **bucket**: one cache line, the
+unit in which the processor fetches memory. A context takes the slot
+whose check matches, or clears the one that has learned least. Two
 contexts that meet in a bucket are told apart 255 times in 256, where
 stage 2 let them share.
 
@@ -206,16 +318,24 @@ place the last seven bytes occurred, and predicts that the byte which
 followed them then follows them now. The longer a match has run, the more
 it is believed.
 
-**Word contexts.** A context of fixed length straddles words badly. Two
-more contexts see the current word as it is being spelled, and the word
-before it, whatever their lengths.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/match-dark.svg">
+  <img alt="Earlier in the file: 'is a lossless data compression algorithm'. Now: 'uses lossless data compression' and the next byte unknown. The last 26 bytes match, so the guess is the byte that followed them before, a." src="figures/match-light.svg">
+</picture>
 
-**APMs.** The mixer's output is right on average and biased in particular
-places. An adaptive probability map, Mahoney's *secondary symbol
-estimation* [[1]](#references), learns the correction: for each context,
-a curve from the probability in to the probability out, as 33 points.
-Two of them refine the mix, one by the bits of the current byte, one by
-those and the previous byte.
+**Word contexts.** A context of fixed length straddles words badly: the
+last six bytes of `the cat` are half one word and all of another. Two
+more models take as their context the current word as it is being
+spelled, and the word before it, whatever their lengths.
+
+**APMs.** The mixer's output is right on average and off in particular
+places. An **adaptive probability map** learns the correction, a
+technique Mahoney calls *secondary symbol estimation*
+[[1]](#references): for each context, a curve from the probability that
+comes in to the probability that goes out, stored as 33 points and
+learned like everything else. Two of them refine the mix, one in the
+context of the bits of the current byte, one in those and the previous
+byte.
 
 The mixer now has nine inputs, and 1,024 weight sets: the previous byte
 and how long the match has run.
@@ -224,8 +344,8 @@ On `enwik8` stage 3 makes **19,687,838 bytes, 1.575 bits a byte**, 12.6%
 smaller than stage 2, in 980 MiB. lpaq1 at its largest setting makes
 19,755,948 [[2]](#references). What each part is worth, from the
 prototype the stage was designed with, which made the same predictions as
-the shipped codec (its sizes are ideal code lengths; the archive adds 30
-bytes):
+the shipped codec (its sizes are ideal code lengths, the sum of −log₂ *p*
+over every bit; the archive adds 30 bytes):
 
 | Stage 3, `mix9` | Bytes | Change |
 |---|---|---|
@@ -248,6 +368,11 @@ time: `mix9` takes about twice as long per byte as `mix6`.
 
 ## 4. Waiting for memory
 
+A processor does not read main memory directly. It reads through
+**caches**, small fast memories that keep what was used recently. A read
+the caches can answer is quick; a read that has to go to main memory takes
+many times longer, and the work that needs it waits.
+
 Every byte `mix9` codes reads sixteen buckets, two in each of eight
 history tables, and an entry of the match model, at places that depend on
 the bytes just seen. The tables are 980 MiB, far larger than the
@@ -263,18 +388,24 @@ of the time.
 Stage 4 took most of that away and kept the archive the same, byte for
 byte: codec 3 was frozen, and its output with it.
 
-- **Large pages.** The processor translates every address through a small
-  cache of page mappings. With 4 KiB pages, 980 MiB is about 250,000
-  pages, far more than that cache holds, so many reads also wait for a
-  walk of the page tables. With 2 MiB pages it is 490.
+- **Large pages.** The processor translates every address a program
+  uses into a place in physical memory, and keeps recent translations in
+  a small cache of their own. With the usual 4 KiB pages, 980 MiB is
+  about 250,000 pages, far more than that cache holds, so many reads also
+  wait for the translation to be looked up. With 2 MiB pages it is 490.
 - **Looking ahead.** The compressor has the whole input. While it codes
   one byte, it already knows the next, so it computes the buckets the next
-  byte will need and asks for them a byte early.
+  byte will need and asks for them a byte early: a **prefetch**.
 - **Guessing ahead.** The decompressor does not know the next byte; that
   is what it is decoding. But while the match model is running, it has a
   guess, and the decompressor fetches for the guess. A wrong guess costs a
   little memory traffic and never a prediction: a fetch changes nothing
   the model reads.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/prefetch-dark.svg">
+  <img alt="Two timelines, not to scale. Fetching when needed, each byte waits for memory and then is coded. Fetching a byte early, the entries for the next byte are fetched while this one is coded, so the waits overlap the work and the same three bytes finish sooner." src="figures/prefetch-light.svg">
+</picture>
 
 | Added to `v0.3`'s model; Linux | Compress | Decompress |
 |---|---|---|
@@ -321,8 +452,8 @@ day. It is a real improvement on `zstd` over the whole file, at 10.28, and
 almost exactly what `mix9` gets by itself.
 
 The ITCH codec does something else. It keeps the state the messages
-describe, and codes each field as its difference from what that state
-says it should be.
+describe, the book of live orders, and codes each field as its difference
+from what that state says it should be.
 
 **Naming an order.** An add gives its order a 64-bit reference number, and
 every later message about the order carries that number and little else.
@@ -334,6 +465,11 @@ Most messages are about recent orders, so the place is a small number:
 shares and price are known: a delete has nothing left to say. Over the
 day, a delete costs 3.65 bytes, of which most is its timestamp.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/order-place-dark.svg">
+  <img alt="A table of six live orders in one stock, most recent first. A delete as sent names its order by a 64-bit reference, 23.6 bits a delete as a column; as coded it names the order by its place in the table, place 4, 4.5 bits on average." src="figures/order-place-light.svg">
+</picture>
+
 **Naming a stock.** Trading comes in bursts, so the stock of a message
 was very often seen a moment ago. The codec names it by its place in a
 list of stocks in order of last use: about 6 bits, where the locate in the
@@ -344,8 +480,8 @@ gap since the last. Reference numbers come from a few counters, so a new
 one is coded against its counter. A replacement price is coded against
 the order's old price, in whole cents and a remainder.
 
-Every field is then coded by the engine of stages 2 and 3: history tables
-of bit states, state maps, a mixer and an APM. The codec is new; the
+Every field is then coded by the engine of stages 2 and 3: tables of
+bit-history states, state maps, a mixer and an APM. The codec is new; the
 engine is not. What changes is where the contexts come from: the stock,
 the type of the last message, the order's side, whatever predicts the
 field at hand.
@@ -414,8 +550,8 @@ spelled, but it still spells it: "because" is seven predictions of a
 letter, made again every time the word appears, each a little uncertain.
 The ITCH codec gained most by coding what the bytes mean rather than the
 bytes, and text has an obvious unit of meaning above the byte: the word.
-Codec 5, `words`, codes the frequent words of the input as single tokens,
-and lets `mix9`'s model predict the tokens.
+Codec 5, `words`, gives each frequent word of the input a short code of
+its own, and lets `mix9`'s model predict the codes.
 
 **The transform.** Before the model sees anything, the compressor reads
 the input twice. The first time it counts every word: a run of 2 to 40
@@ -432,6 +568,12 @@ code of one, two or three bytes:
 | the same word in capitals | another flag byte, then its code |
 | any other byte | itself, after an escape byte if it collides with a code or flag |
 
+For example, if `the`, `cat` and `because` are in the dictionary and
+`barked` is not, `The cat barked because THE dog` becomes: the
+capital flag and the code for `the`, a space, the code for `cat`, a
+space, `barked` letter by letter, a space, the code for `because`, a
+space, the capitals flag and the code for `the`, and so on.
+
 The 48 commonest words get one-byte codes, the next 3,840 two-byte codes,
 and up to 73,728 more three-byte codes. The code bytes are the 96 byte
 values of 128 or more that the input uses least, chosen per file; the
@@ -444,7 +586,7 @@ reads the dictionary back from the stream and undoes the rest; the
 dictionary is part of the archive, so nothing about English is built
 into the program.
 
-This is a word-replacing transform, a technique with a literature
+This is a **word-replacing transform**, a technique with a literature
 [[8]](#references); on the Large Text Compression Benchmark, Alexander
 Rhatushnyak's `drt` makes lpaq1 4.5% smaller on `enwik8` with a
 dictionary shipped beside the program, and mcm 0.83 builds one from the
@@ -471,7 +613,7 @@ costs much more.
 **Why it is also faster.** The transformed `enwik9` is 624 million bytes,
 62% of the input. The model's time is per byte it codes, so it does 38%
 less work, and in the prototype the transform itself cost 14 ns a byte one
-way and 6 the other. A change that makes a context mixer smaller usually makes it
+way and 6 the other. A change that makes a context mixer's output smaller usually makes it
 slower; this one does both.
 
 **The model behind it.** With the stream that much shorter, the model can
@@ -535,12 +677,14 @@ does: a quarter of `enwik9`'s word stream, an eighth of `enwik8`'s.
 
 ## 7. Where cpress sits
 
-Compressors trade size for time, and no single number ranks them. The
-figure puts cpress's four text codecs beside the compressors people use,
-measured on one machine, each alone on one pinned processor, the fastest
-of three runs each way, every round trip checked. The appendix has the
-commands: stage 6's [sitting](#stage-6-the-text-compressors-on-enwik8),
-stage 7's for [mcm](#stage-7-mcm-083-on-this-machine), and stage 8's for
+Compressors trade size for time, and no single number ranks them. Times
+here are in nanoseconds per byte of input, **ns/B**: 300 ns/B is about
+3.3 MB a second. The figure puts cpress's four text codecs beside the
+compressors people use, measured on one machine, each alone on one pinned
+processor, the fastest of three runs each way, every round trip checked.
+The appendix has the commands: stage 6's
+[sitting](#stage-6-the-text-compressors-on-enwik8), stage 7's for
+[mcm](#stage-7-mcm-083-on-this-machine), and stage 8's for
 [`words` and `words2`](#stage-8-codec-6-words2).
 The three hollow points are among the strongest programs the Large Text
 Compression Benchmark lists a size of `enwik8` for [[2]](#references), too
@@ -595,8 +739,9 @@ What the figure says:
 - **The top of the benchmark** is 16% to 22% smaller than `words2`, at
   500 to 1,800 times the time, on machines that are not this one. paq8px
   and cmix mix far more models than cpress, cmix with neural networks
-  among them, and nncp predicts with a transformer
-  [[2]](#references) [[7]](#references).
+  among them, and nncp predicts with a Transformer, the kind of network
+  large language models are built on
+  [[2]](#references) [[7]](#references) [[10]](#references).
 
 **On `enwik9`,** the first 1 GB of the same dump and the file the benchmark
 ranks on, `mix9` makes **165,953,692 bytes, 1.328 bits a byte**, at 454 ns
@@ -637,6 +782,40 @@ bzip2 the size of its row for version 1.0.3. gzip's differs by one byte,
 which the file name gzip keeps in its header would explain: here it was
 `input`. The other programs are newer versions than the benchmark lists.
 
+### Why not a language model
+
+Section 1 says a language model in front of an arithmetic coder is a
+compressor. The top of the benchmark already is one of a kind: nncp, by
+Fabrice Bellard, makes `enwik9` 106,632,363 bytes with a Transformer, and
+107,261,318 with its decompressor counted [[10]](#references), 29% under
+`words2`'s total. Four things keep a general-purpose compressor from
+simply being a large language model trained in advance:
+
+- **The decompressor needs the model.** Decoding needs the same
+  probabilities, so a model trained in advance has to travel with the
+  decompressor, and its size is part of the cost; the benchmark counts
+  the decompressor for that reason [[2]](#references). Delétang and
+  others measured it on `enwik9` in 2048-byte pieces: a model of 70
+  billion parameters, Chinchilla, wrote them in 8.3% of their size, but
+  with its parameters counted the result was 14,008% of the input, where
+  gzip's was 32.3% [[11]](#references). nncp's whole program, zipped, is
+  628,955 bytes [[10]](#references), so what it knows about English it
+  learns from the file, as cpress does.
+- **Every machine must compute the same probabilities.** One probability
+  that differs in its last bit between the machine that compressed and
+  the one that decompresses, and everything after it decodes wrong.
+  Floating-point arithmetic need not agree to the last bit across
+  processors, libraries and graphics cards; cpress uses none (section 8).
+- **Time.** nncp takes about 242,000 ns a byte on the benchmark's machine
+  [[2]](#references): close to three days for `enwik9`, where `words2`
+  takes about five minutes.
+- **Data no language model has read.** A model of English knows nothing
+  of an order book. Section 5's gain came from modelling one.
+
+A model trained in advance does win where both sides already have it and
+the input is short: cpress starts every file knowing nothing, and in a
+short message has no time to learn.
+
 ## 8. Why it can be trusted
 
 A compressor that loses data is worse than none. cpress is built so that
@@ -649,8 +828,8 @@ be ruled out is tested.
   about which field comes next or what it is expected to be.
 - **Integers only.** No floating point in any model or the coder, so an
   archive decodes the same on every compiler and processor. The `mix9`
-  archive of `enwik8` has the same CRC-32, `6ee44655`, built with MSVC and
-  with GCC.
+  archive of `enwik8` has the same CRC-32 checksum, `6ee44655`, built
+  with MSVC and with GCC.
 - **Every archive is untrusted.** Every size and count read from an
   archive is checked before it is used; memory is allocated in proportion
   to the bytes present, never to a size the archive claims; a model's
@@ -659,16 +838,17 @@ be ruled out is tested.
   `enwik8` passes 1.6) but because a crafted archive could otherwise walk
   a weight into overflow. A malformed archive is an error and nothing
   else: not a crash, a hang or a runaway allocation. Corruption and
-  mutation tests check it for every codec, and in CI libFuzzer, under
-  the same sanitizers, searches for an archive that breaks it on every
-  push and every night.
+  mutation tests check it for every codec, and in CI libFuzzer, a tool
+  that feeds the decoder endless altered archives looking for one that
+  breaks it, runs on every push and every night.
 - **Formats are permanent.** Once a codec ships, its id and its output are
   fixed. A small archive for each is checked in as bytes, and the tests
   check that it decodes, and that its input still compresses to exactly
   those bytes.
 - **Every push is built and tested** with MSVC, GCC and Clang, on Linux,
   macOS and Windows, and under the address and undefined-behaviour
-  sanitizers.
+  sanitizers, which stop the program at the first out-of-bounds access or
+  undefined operation.
 
 ## 9. What is left
 
@@ -698,6 +878,32 @@ The classical design is finished. What the stages measured and left:
   with a model of its own, trading compression for speed. For ITCH that trade is poor: an
   order message refers to an order added minutes or hours earlier, which
   a block that starts fresh does not have.
+
+## Words used in this document
+
+| Word | Meaning | Section |
+|---|---|---|
+| APM | Adaptive probability map: a learned correction of the mixer's probability, per context | [3](#3-remembering-more-than-a-count) |
+| Arithmetic coder | Writes each bit in about −log₂ *p* bits by narrowing a range of numbers | [1](#1-compression-is-prediction) |
+| Bit-history state | One byte summarising how many 0s and 1s a context has seen, recent ones weighted more | [3](#3-remembering-more-than-a-count) |
+| Bits a byte | Archive bits per input byte; the input has 8 | [1](#1-compression-is-prediction) |
+| Bucket, slot, check | A 64-byte group of four slots; a slot holds one context's statistics, and a check tells which context owns it | [2](#2-many-guesses-one-answer), [3](#3-remembering-more-than-a-count) |
+| Cache, cache line | The processor's small fast memories, and the 64 bytes they fetch at once | [4](#4-waiting-for-memory) |
+| Codec | One shipped design, named in the archive: `order0`, `mix6`, `mix9`, `itch`, `words`, `words2` | [How to read this](#how-cpress-works) |
+| Context, order *n* | What a model looks at to predict; order *n* means the last *n* bytes | [2](#2-many-guesses-one-answer) |
+| Context mixing | Many models' predictions combined by a learned mixer: the kind of compressor cpress is | [2](#2-many-guesses-one-answer) |
+| `enwik8`, `enwik9` | The first 100 MB and 1 GB of an English Wikipedia dump, the benchmark's files | [7](#7-where-cpress-sits) |
+| Fair baseline | ITCH fields split into columns, each compressed with `zstd -19` | [5](#5-understanding-the-data) |
+| Hash | A number computed from a context, used to pick its slot | [2](#2-many-guesses-one-answer) |
+| ITCH | NASDAQ's feed of every order event on its book | [5](#5-understanding-the-data) |
+| Match model | Predicts the byte that followed the last occurrence of the latest bytes | [3](#3-remembering-more-than-a-count) |
+| Mixer, weight set | Adds the models' stretched predictions with learned weights; one set of weights per context | [2](#2-many-guesses-one-answer) |
+| Nibble | Half a byte, four bits | [2](#2-many-guesses-one-answer) |
+| ns/B | Nanoseconds per byte of input; 300 ns/B is about 3.3 MB a second | [7](#7-where-cpress-sits) |
+| Prefetch | Asking for memory before it is needed, so the wait overlaps other work | [4](#4-waiting-for-memory) |
+| State map | Learns the probability of a 1 after each bit-history state | [3](#3-remembering-more-than-a-count) |
+| Stretch, squash | ln(*p* / (1 − *p*)), probability to evidence, and its inverse | [2](#2-many-guesses-one-answer) |
+| Word transform | Replacing frequent words by short codes before the model sees the text | [6](#6-understanding-words) |
 
 ## Appendix: the measurements
 
@@ -1161,3 +1367,11 @@ section 2.
 9. Mathieu Chartier, mcm, GPL-3.0. <https://github.com/mathieuchartier/mcm>;
    version 0.83 is commit `02b4e7d`, 5 April 2015, and its dictionary
    came in the commits of 15 to 29 March 2015 before it.
+10. Fabrice Bellard, NNCP: lossless data compression with neural networks.
+    <https://bellard.org/nncp/>. The `enwik9` result is its table's row
+    for the version of 21 October 2023.
+11. G. Delétang, A. Ruoss, P.-A. Duquenne, E. Catt, T. Genewein,
+    C. Mattern, J. Grau-Moya, L. K. Wenliang, M. Aitchison, L. Orseau,
+    M. Hutter and J. Veness, "Language Modeling Is Compression",
+    arXiv:2309.10668, 2023, revised 2024, Table 1.
+    <https://arxiv.org/abs/2309.10668>

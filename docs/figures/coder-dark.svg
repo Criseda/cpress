@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="366" viewBox="0 0 760 366" role="img" aria-labelledby="title desc">
+<title id="title">The coder: each bit narrows an interval</title>
+<desc id="desc">The interval from 0 to 1 is split in proportion to the probability of a 1. Bits 1, 1 and 0 with probabilities 0.8, 0.9 and 0.3 leave an interval of width 0.216, which takes 2.21 bits to name.</desc>
+<style>text { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .num { font-variant-numeric: tabular-nums; }</style>
+<rect width="760" height="366" rx="8" fill="#1a1a19"/>
+<text x="24" y="34" font-size="17" fill="#f0efec" font-weight="600">The coder: each bit narrows an interval</text>
+<text x="24" y="56" font-size="13" fill="#c3c2b7">Three bits, as an example. A 1 takes the lower part, a 0 the upper.</text>
+<text x="300" y="104" font-size="12" fill="#898781" text-anchor="middle" class="num">0</text>
+<text x="736" y="104" font-size="12" fill="#898781" text-anchor="middle" class="num">1</text>
+<line x1="300" y1="125" x2="736" y2="125" stroke="#2c2c2a" stroke-width="2"/>
+<rect x="300" y="114" width="348.8" height="22" rx="3" fill="#1c2f4a" stroke="#3987e5" stroke-width="1"/>
+<rect x="648.8" y="114" width="87.2" height="22" rx="3" fill="#242423" stroke="#383835" stroke-width="1"/>
+<text x="474.4" y="130" font-size="12" fill="#f0efec" text-anchor="middle">1</text>
+<text x="692.4" y="130" font-size="12" fill="#c3c2b7" text-anchor="middle">0</text>
+<text x="24" y="123" font-size="12" fill="#f0efec">Bit 1: the model says P(1) = 0.8</text>
+<text x="24" y="141" font-size="12" fill="#c3c2b7">it is a 1, which costs 0.32 bits</text>
+<line x1="300" y1="181" x2="736" y2="181" stroke="#2c2c2a" stroke-width="2"/>
+<rect x="300" y="170" width="313.9" height="22" rx="3" fill="#1c2f4a" stroke="#3987e5" stroke-width="1"/>
+<rect x="613.9" y="170" width="34.9" height="22" rx="3" fill="#242423" stroke="#383835" stroke-width="1"/>
+<text x="457" y="186" font-size="12" fill="#f0efec" text-anchor="middle">1</text>
+<text x="631.4" y="186" font-size="12" fill="#c3c2b7" text-anchor="middle">0</text>
+<text x="24" y="179" font-size="12" fill="#f0efec">Bit 2: the model says P(1) = 0.9</text>
+<text x="24" y="197" font-size="12" fill="#c3c2b7">it is a 1, which costs 0.15 bits</text>
+<line x1="300" y1="237" x2="736" y2="237" stroke="#2c2c2a" stroke-width="2"/>
+<rect x="519.7" y="226" width="94.2" height="22" rx="3" fill="#1c2f4a" stroke="#3987e5" stroke-width="1"/>
+<rect x="300" y="226" width="219.7" height="22" rx="3" fill="#242423" stroke="#383835" stroke-width="1"/>
+<text x="409.9" y="242" font-size="12" fill="#f0efec" text-anchor="middle">1</text>
+<text x="566.8" y="242" font-size="12" fill="#c3c2b7" text-anchor="middle">0</text>
+<text x="24" y="235" font-size="12" fill="#f0efec">Bit 3: the model says P(1) = 0.7</text>
+<text x="24" y="253" font-size="12" fill="#c3c2b7">it is a 0, which costs 1.74 bits</text>
+<line x1="300" y1="293" x2="736" y2="293" stroke="#2c2c2a" stroke-width="2"/>
+<rect x="519.7" y="282" width="94.2" height="22" rx="3" fill="#3987e5" stroke="#3987e5" stroke-width="1"/>
+<text x="24" y="291" font-size="12" fill="#f0efec" font-weight="600">What is left: 0.216 of the start</text>
+<text x="24" y="309" font-size="12" fill="#c3c2b7">−log₂ 0.216 = 2.21 bits, the sum of the costs</text>
+<text x="24" y="352" font-size="12" fill="#898781">The archive is the shortest binary fraction inside what is left.</text>
+</svg>
