@@ -63,6 +63,10 @@ frontier, and only mcm's underline would go.
 
 ## The choices
 
+The owner decided on 27 November: past lpaq9m in size first, the memory
+frontier after it with a denser table layout, its own stage; and the
+streaming driver, as its own pull request after codec 8.
+
 **What codec 8 is for.** **Recommendation:** past lpaq9m in size, with
 the time frontiers kept and lpaq9m left behind on time as well: under
 144,054,338 bytes of `enwik9` with the source zipped, compressing under
