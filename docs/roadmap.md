@@ -233,16 +233,18 @@ mcm 0.83 is 4.4% smaller and decompresses faster. Under mcm's total of
 144,934,149 bytes, cpress would place 39th and be on both frontiers.
 
 - mcm taken apart on this machine, one part at a time, to rank what its
-  4.4% is made of (if the owner approves).
+  4.4% is made of. Done.
 - A prototype of the candidates outside the repository: the mixer's
   weight sets and learning rate, order 0 and the character-class context,
   larger high-order tables, dictionary tweaks, and issue #19's table
-  layout to pay back the decoder's time.
-- Codec 7: under 144,934,149 bytes of `enwik9` with the source zipped,
-  compressing under 394 ns a byte and decompressing no slower than
-  `words2`. If that is out of reach, the brief says what is, with
-  nanozip's 149,328,821 as the next mark.
-- Tag `v1.3`.
+  layout to pay back the decoder's time. Done: classes and per-bit
+  weights paid, and no table layout paid back the decoder's time.
+- Codec 7, `words3`: under 144,934,149 bytes of `enwik9` with the source
+  zipped, compressing under 394 ns a byte and decompressing under 898.
+  The exit first asked for decompressing no slower than `words2`; nothing
+  under mcm's size managed that, and the owner kept the size (brief,
+  section 2). `words3` makes `enwik9` in 144,613,104 bytes.
+- Its speeds on a quiet machine, then tag `v1.3`.
 
 ## After 1.0
 

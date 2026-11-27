@@ -30,9 +30,10 @@
 // Each history table has 2^level slots of 16 bytes, except orders 1 and 2,
 // which have too few contexts to use more than 2^14 and 2^22. The match
 // model's buffer is as large as one history table. The two APMs, the mixer
-// and the maps add a fixed 4.2 MiB, most of it the second APM. With
-// shortcuts, FlagModel adds two tables of one byte per entry, each with an
-// eighth as many entries as a history table has slots (flag_table_bits()).
+// and the maps add a fixed 4.2 MiB, most of it the second APM; with
+// classes, 20 MiB more (below). With shortcuts, FlagModel adds two tables
+// of one byte per entry, each with an eighth as many entries as a history
+// table has slots (flag_table_bits()).
 // The tables, the match model and the APMs are on large pages where the
 // platform grants them (table_allocator.hpp).
 //
@@ -56,14 +57,16 @@
 // weights and the APMs' nearer points learn each bit, except what the
 // shortcuts below skip; see each component.
 //
-// Three models, one class. ContextMix is a template on the number of byte
-// contexts, the largest level and whether it takes shortcuts, and
-// everything above is written in terms of them. Mix9 is ContextMix<6, 23>,
-// codec 3's model, frozen at v0.3. Mix10 is ContextMix<7, 25>, codec 5's:
-// an order-7 table as well, so ten predictions, and a largest level with
-// four times the memory, for the word streams of files of a gigabyte
-// (docs/stages/stage-7.md, sections 3 and 4), frozen at v1.1. Mix10Flag is
-// Mix10 with shortcuts, codec 6's.
+// Four models, one class. ContextMix is a template on the number of byte
+// contexts, the largest level, whether it takes shortcuts, whether it uses
+// byte classes, and an order it skips, and everything above is written in
+// terms of them. Mix9 is ContextMix<6, 23>, codec 3's model, frozen at
+// v0.3. Mix10 is ContextMix<7, 25>, codec 5's: an order-7 table as well,
+// so ten predictions, and a largest level with four times the memory, for
+// the word streams of files of a gigabyte (docs/stages/stage-7.md,
+// sections 3 and 4), frozen at v1.1. Mix10Flag is Mix10 with shortcuts,
+// codec 6's, frozen at v1.2. Mix11 is Mix10Flag with classes and without
+// order 6, codec 7's: eleven predictions.
 //
 // Shortcuts: work skipped where the model is already sure, measured in
 // docs/stages/stage-8.md.
@@ -77,6 +80,20 @@
 //   the mixer   does not learn from a bit it predicted within a few parts
 //               in 4096.
 //
+// Classes: codec 7's additions, measured in docs/stages/stage-9.md,
+// section 2. Each byte has one of sixteen classes (byte_classes.hpp).
+//   class tables  two more history tables, keyed by the classes of the
+//                 last 12 bytes and of the last 6.
+//   weight sets   chosen per bit, not per byte: by the classes of the last
+//                 two bytes, the match's length and the partial byte,
+//                 262,144 sets of 64 bytes, 16 MiB. Each has its own
+//                 learning rate, which starts high and decays (mixer.hpp).
+//   a bias        a constant input, so each set learns an offset of its own.
+//   APM 1         keyed by the classes of the last two bytes as well as the
+//                 partial byte: 65,536 contexts, 4 MiB.
+// Order 6 is skipped: on enwik9 its table was worth 0.28% of the size and
+// cost 12% of the decoding time.
+//
 // Technique: this is the lpaq class of compressor, after Matt Mahoney's
 // lpaq1 (2007): bit-history states in checked nibble slots, read through
 // state maps, a match model and a word context, mixed and refined by
@@ -84,6 +101,7 @@
 #pragma once
 
 #include "model/apm.hpp"
+#include "model/byte_classes.hpp"
 #include "model/context_table.hpp"
 #include "model/flag_model.hpp"
 #include "model/history_table.hpp"
@@ -171,12 +189,28 @@ struct NoFlagModel {
 
 }  // namespace detail
 
-template <int Orders, int MaxLevel, bool Shortcuts = false>
+template <int Orders, int MaxLevel, bool Shortcuts = false, bool Classes = false,
+          int SkippedOrder = 0>
 class ContextMix {
 public:
-    // The byte contexts: 1 to kOrders bytes.
+    // The byte contexts: 1 to kOrders bytes, but kSkippedOrder, if not 0.
     static constexpr int kOrders = Orders;
+    static constexpr int kSkippedOrder = SkippedOrder;
     static_assert(kOrders >= 2 && kOrders <= kMaxOrder);
+    static_assert(kSkippedOrder == 0 || (kSkippedOrder > 1 && kSkippedOrder < kOrders));
+    static constexpr std::size_t kOrderTables =
+        static_cast<std::size_t>(kOrders) - (kSkippedOrder != 0 ? 1 : 0);
+
+    // The order of each order table: 1 to kOrders, without kSkippedOrder.
+    static constexpr std::array<int, kOrderTables> kOrderOf = [] {
+        std::array<int, kOrderTables> orders{};
+        int order = 1;
+        for (int& o : orders) {
+            if (order == kSkippedOrder) ++order;
+            o = order++;
+        }
+        return orders;
+    }();
 
     // Codec 6's shortcuts; see the top of this file. The values were chosen
     // in the prototype (docs/stages/stage-8.md, section 2).
@@ -192,9 +226,17 @@ public:
     // kProbOne.
     static constexpr std::uint32_t kMixerSkipError = 20;
 
-    // The history tables: the orders, then the word and bigram contexts.
-    static constexpr std::size_t kTables = static_cast<std::size_t>(kOrders) + 2;
-    static constexpr std::size_t kInputs = kTables + 1;  // and the match model
+    // Codec 7's classes; see the top of this file.
+    static constexpr bool kClasses = Classes;
+    // The bias input: one unit of ln odds, always.
+    static constexpr std::int32_t kBiasStretch = kStretchOne;
+
+    // The history tables: the orders, then the word and bigram contexts,
+    // then with classes the long and short class contexts. The mixer's
+    // inputs are their predictions, the match model's, and with classes
+    // the bias.
+    static constexpr std::size_t kTables = kOrderTables + 2 + (kClasses ? 2 : 0);
+    static constexpr std::size_t kInputs = kTables + 1 + (kClasses ? 1 : 0);
 
     // The level is log2 of the slots in each history table but order 1's.
     static constexpr int kMinLevel = 10;
@@ -218,9 +260,9 @@ public:
         return level - 1;
     }
 
-    // log2 of the slots in history table `table` (orders 1 to kOrders, then
-    // word and bigram) at `level`: the level, or less for an order with too
-    // few contexts to use that many.
+    // log2 of the slots in history table `table` (the orders, then the rest)
+    // at `level`: the level, or less for an order with too few contexts to
+    // use that many.
     //
     // The order 2 cap, 2^22, binds from level 23, and changes no
     // prediction there: at 2^22 slots, as at more, every order 2 key has a
@@ -228,7 +270,7 @@ public:
     // slot is ever shared or evicted (mix9_test.cpp checks every key).
     [[nodiscard]] static constexpr int table_slot_bits(std::size_t table, int level) noexcept {
         if (table >= kOrderTables) return level;
-        return std::min(level, usable_slot_bits(static_cast<int>(table) + 1));
+        return std::min(level, usable_slot_bits(kOrderOf[table]));
     }
 
     // log2 of each flag table's entries at `level`: an eighth as many as a
@@ -249,8 +291,8 @@ public:
         bytes += MatchModel::memory_bytes(match_buffer_bits(level), match_hash_bits(level));
         bytes += Apm::memory_bytes(kPartialByteContexts);
         bytes += Apm::memory_bytes(kPreviousByteContexts);
-        bytes += kWeightSets * kInputs * sizeof(std::int32_t);  // the mixer
-        if constexpr (kShortcuts) bytes += FlagModel::memory_bytes(flag_table_bits(level));
+        bytes += Mixer<kInputs, kClasses>::memory_bytes(kWeightSets);
+        if constexpr (kShortcuts) bytes += Flag::memory_bytes(flag_table_bits(level));
         return bytes;
     }
 
@@ -263,6 +305,7 @@ public:
         words::Words words;
         std::uint64_t word_key = words::word_key(0);         // the word table's, before the marker
         std::uint64_t bigram_key = words::bigram_key(0, 0);  // the bigram table's, likewise
+        std::uint64_t classes = 0;  // with classes, their history (byte_classes.hpp)
     };
 
     // The context of the byte after `byte`, if `context` is the context of
@@ -271,22 +314,38 @@ public:
                                                             std::uint32_t byte) noexcept {
         assert(byte <= 0xFF);
         const words::Words next = words::next_words(context.words, byte);
-        return {.history = (context.history << 8) | byte,
-                .words = next,
-                .word_key = words::word_key(next.word),
-                .bigram_key = words::bigram_key(next.word, next.previous)};
+        ByteContext after{.history = (context.history << 8) | byte,
+                          .words = next,
+                          .word_key = words::word_key(next.word),
+                          .bigram_key = words::bigram_key(next.word, next.previous)};
+        if constexpr (kClasses) after.classes = classes::next_history(context.classes, byte);
+        return after;
     }
 
     // The key of every history table in `context`, for the nibble `marker`
-    // names: orders 1 to kOrders, then word and bigram.
+    // names: the orders, word and bigram, and with classes the class tables.
     [[nodiscard]] static constexpr std::array<std::uint64_t, kTables> table_keys(
         const ByteContext& context, std::uint32_t marker) noexcept {
         std::array<std::uint64_t, kTables> keys{};
         for (std::size_t i = 0; i < kOrderTables; ++i) {
-            keys[i] = context_key(context.history, static_cast<int>(i) + 1, marker);
+            keys[i] = context_key(context.history, kOrderOf[i], marker);
         }
         keys[kWordTable] = with_marker(context.word_key, marker);
         keys[kBigramTable] = with_marker(context.bigram_key, marker);
+        if constexpr (kClasses) {
+            keys[kLongClassTable] = with_marker(classes::long_key(context.classes), marker);
+            keys[kShortClassTable] = with_marker(classes::short_key(context.classes), marker);
+        }
+        return keys;
+    }
+
+    // `keys`, the table keys of a context at one marker, as they are at
+    // `marker`: every key ends in its marker's kMarkerBits, and nothing else
+    // in it depends on the marker. Cheaper than table_keys() again.
+    [[nodiscard]] static constexpr std::array<std::uint64_t, kTables> remarked(
+        std::array<std::uint64_t, kTables> keys, std::uint32_t marker) noexcept {
+        constexpr std::uint64_t kKeep = ~((std::uint64_t{1} << kMarkerBits) - 1);
+        for (std::uint64_t& key : keys) key = (key & kKeep) | marker;
         return keys;
     }
 
@@ -316,6 +375,10 @@ public:
             st[i] = stretch(maps_[i].p12(tables_[i].state(node_)));
         }
         st[kTables] = match_.predict(partial_);
+        if constexpr (kClasses) {
+            st[kTables + 1] = kBiasStretch;
+            mixer_.select((byte_weight_set_ * kByteDone) + partial_);
+        }
         const std::uint32_t mixed = mixer_.mix(st);
         const std::int32_t mixed_st = stretch(mixed);
         if constexpr (kShortcuts) {
@@ -326,7 +389,7 @@ public:
 
         // Each term is in [kProbMin, kProbMax], so their weighted mean is.
         const std::uint32_t previous_byte = static_cast<std::uint32_t>(context_.history) & 0xFF;
-        const std::uint32_t refined = by_partial_byte_.refine(mixed_st, partial_);
+        const std::uint32_t refined = by_partial_byte_.refine(mixed_st, partial_byte_context());
         const std::uint32_t refined_by_previous =
             by_previous_byte_.refine(mixed_st, partial_ + (kByteDone * previous_byte));
         return (mixed + refined + (2 * refined_by_previous)) / 4;
@@ -343,6 +406,7 @@ public:
         // and the bit has just decided the next: fetch it now, an update's
         // work before predict() reads it. A hint; it changes nothing.
         by_previous_byte_.prefetch(next_previous_byte_context(bit));
+        if constexpr (kClasses) prefetch_next_weight_set(bit);
         learn_mix(bit);
         for (std::size_t i = 0; i < kTables; ++i) {
             maps_[i].update(bit);
@@ -382,8 +446,9 @@ public:
     // itself selects with.
     [[nodiscard]] Lookahead lookahead(std::uint32_t byte, std::uint32_t next) const noexcept {
         const ByteContext after = next_context(context_, byte);
-        return {.first_nibble = table_keys(after, kFirstNibble),
-                .second_nibble = table_keys(after, second_nibble_marker(next)),
+        const std::array<std::uint64_t, kTables> first = table_keys(after, kFirstNibble);
+        return {.first_nibble = first,
+                .second_nibble = remarked(first, second_nibble_marker(next)),
                 .context = after};
     }
 
@@ -458,8 +523,8 @@ public:
         const noexcept {
         assert(marker_ == kFirstNibble && (node_ >> kSecondNibbleBits) == 1);
         const std::uint32_t nibble = (node_ - (1U << kSecondNibbleBits)) * 2;
-        return {table_keys(context_, kNibbleDone + nibble),
-                table_keys(context_, kNibbleDone + nibble + 1)};
+        return {remarked(first_keys_, kNibbleDone + nibble),
+                remarked(first_keys_, kNibbleDone + nibble + 1)};
     }
 
     // The context after each byte still possible when kNextByteBits of it
@@ -547,21 +612,33 @@ public:
     }
 
 private:
-    // One weight set per previous byte and match length class.
-    static constexpr std::size_t kWeightSets = std::size_t{256} * MatchModel::kMixerContexts;
-
-    // The APMs' contexts: the partial byte, 1 to 255; and that with the
-    // previous byte.
+    // A partial byte is 1 to 255: the bits so far, after a leading 1.
     static constexpr std::uint32_t kByteDone = 0x100;
-    static constexpr std::size_t kPartialByteContexts = kByteDone;
+    static constexpr std::size_t kClassPairs =
+        std::size_t{classes::kClassCount} * classes::kClassCount;
+
+    // The weight sets: one per previous byte and match length class, chosen
+    // per byte; with classes, one per class of the last two bytes, match
+    // length class and partial byte, chosen per bit.
+    static constexpr std::size_t kByteWeightSets =
+        (kClasses ? kClassPairs : std::size_t{256}) * MatchModel::kMixerContexts;
+    static constexpr std::size_t kWeightSets = kByteWeightSets * (kClasses ? kByteDone : 1);
+
+    // The APMs' contexts: the partial byte, with classes also the classes of
+    // the last two bytes; and the partial byte with the previous byte.
+    static constexpr std::size_t kPartialByteContexts = kByteDone * (kClasses ? kClassPairs : 1);
     static constexpr std::size_t kPreviousByteContexts = std::size_t{256} * kByteDone;
 
     // The marker of a first-nibble slot; see context_key().
     static constexpr std::uint32_t kFirstNibble = 0;
 
-    static constexpr std::size_t kOrderTables = static_cast<std::size_t>(kOrders);
     static constexpr std::size_t kWordTable = kOrderTables;
     static constexpr std::size_t kBigramTable = kOrderTables + 1;
+    static constexpr std::size_t kLongClassTable = kOrderTables + 2;   // with classes
+    static constexpr std::size_t kShortClassTable = kOrderTables + 3;  // with classes
+
+    // The flag model, with shortcuts; with classes its mixer's rate decays.
+    using Flag = BasicFlagModel<kClasses>;
 
     template <std::size_t... Index>
     [[nodiscard]] static std::array<HistoryTable, kTables> make_tables(
@@ -581,6 +658,24 @@ private:
     [[nodiscard]] static constexpr std::uint64_t with_marker(std::uint64_t key,
                                                              std::uint32_t marker) noexcept {
         return (key << kMarkerBits) | marker;
+    }
+
+    // The first APM's context: the partial byte, and with classes the
+    // classes of the last two bytes.
+    [[nodiscard]] std::size_t partial_byte_context() const noexcept {
+        if constexpr (kClasses) {
+            return partial_ + (std::size_t{kByteDone} * classes::last_two(context_.classes));
+        } else {
+            return partial_;
+        }
+    }
+
+    // With classes: fetches the weight set the bit after `bit` will select,
+    // if it is in this byte. The next byte's sets depend on the match model,
+    // so they are not known until push_byte(). A hint; it changes nothing.
+    void prefetch_next_weight_set(int bit) const noexcept {
+        const std::uint32_t partial = (partial_ * 2) + static_cast<std::uint32_t>(bit);
+        if (partial < kByteDone) mixer_.prefetch((byte_weight_set_ * kByteDone) + partial);
     }
 
     // The second APM's context for the bit after `bit`: the partial byte
@@ -618,35 +713,44 @@ private:
         excluded_.reset();
     }
 
-    // Points every table at its slot for the nibble about to be coded.
+    // Points every table at its slot for the nibble about to be coded. The
+    // second nibble's keys are the first's, remarked.
     void select_slots() noexcept {
-        const std::array<std::uint64_t, kTables> keys = table_keys(context_, marker_);
+        if (marker_ == kFirstNibble) first_keys_ = table_keys(context_, kFirstNibble);
+        const std::array<std::uint64_t, kTables> keys = remarked(first_keys_, marker_);
         for (std::size_t i = 0; i < kTables; ++i) tables_[i].select(keys[i]);
     }
 
     // A whole byte has been coded: it joins the context and the match model,
-    // and picks the weight set for the byte after it, which depends on the
+    // and picks the weight sets for the byte after it, which depend on the
     // match the byte left running.
     void push_byte(std::uint32_t byte) noexcept {
         context_ = next_context(context_, byte);
         match_.push_byte(context_.history);
-        mixer_.select((MatchModel::kMixerContexts * byte) + match_.mixer_context());
+        if constexpr (kClasses) {
+            byte_weight_set_ = (MatchModel::kMixerContexts * classes::last_two(context_.classes)) +
+                               match_.mixer_context();
+        } else {
+            mixer_.select((MatchModel::kMixerContexts * byte) + match_.mixer_context());
+        }
     }
 
-    std::array<HistoryTable, kTables> tables_;  // orders 1 to kOrders, word, bigram
+    std::array<HistoryTable, kTables> tables_;  // the orders, word, bigram, class tables
     std::array<ProbabilityMap, kTables> maps_;  // the state map of each table
     MatchModel match_;
-    Mixer<kInputs> mixer_;
-    Apm by_partial_byte_;                  // APM 1
-    Apm by_previous_byte_;                 // APM 2
-    ByteContext context_;                  // of the byte being coded
+    Mixer<kInputs, kClasses> mixer_;
+    Apm by_partial_byte_;                              // APM 1
+    Apm by_previous_byte_;                             // APM 2
+    ByteContext context_;                              // of the byte being coded
+    std::array<std::uint64_t, kTables> first_keys_{};  // table_keys(context_, kFirstNibble)
+    std::size_t byte_weight_set_ = 0;      // with classes: this byte's weight sets, over kByteDone
     std::uint32_t marker_ = kFirstNibble;  // which nibble is being coded; see context_key()
     std::uint32_t node_ = 1;               // position in that nibble's tree, 1 to 15
     std::uint32_t partial_ = 1;            // the byte's bits so far, after a leading 1
 
     // The shortcuts' state. Without shortcuts the flag model is empty and
     // the rest is never read.
-    std::conditional_t<kShortcuts, FlagModel, detail::NoFlagModel> flag_;
+    std::conditional_t<kShortcuts, Flag, detail::NoFlagModel> flag_;
     std::optional<std::uint32_t> guess_;     // the guess FlagModel weighed for this byte
     std::optional<std::uint32_t> excluded_;  // the guess a coded flag ruled out
     std::uint32_t flag_p12_ = 0;             // FlagModel's P(the byte is the guess)
@@ -655,16 +759,19 @@ private:
     bool apms_skipped_ = false;              // whether the last predict() skipped the APMs
 };
 
-// Codec 3's model, frozen at v0.3; codec 5's, frozen at v1.1; and codec 6's.
+// Codec 3's model, frozen at v0.3; codec 5's, frozen at v1.1; codec 6's,
+// frozen at v1.2; and codec 7's.
 using Mix9 = ContextMix<6, 23>;
 using Mix10 = ContextMix<7, 25>;
 using Mix10Flag = ContextMix<7, 25, true>;
+using Mix11 = ContextMix<7, 25, true, true, 6>;
 
-static_assert(Predictor<Mix9> && Predictor<Mix10> && Predictor<Mix10Flag>);
+static_assert(Predictor<Mix9> && Predictor<Mix10> && Predictor<Mix10Flag> && Predictor<Mix11>);
 // Without this, a hint whose signature drifted would leave the models short
 // of the concept, the coding loops would quietly stop calling it, and every
 // test of the output would still pass. The same holds for the flag.
-static_assert(Prefetching<Mix9> && Prefetching<Mix10> && Prefetching<Mix10Flag>);
-static_assert(!Flagging<Mix9> && !Flagging<Mix10> && Flagging<Mix10Flag>);
+static_assert(Prefetching<Mix9> && Prefetching<Mix10> && Prefetching<Mix10Flag> &&
+              Prefetching<Mix11>);
+static_assert(!Flagging<Mix9> && !Flagging<Mix10> && Flagging<Mix10Flag> && Flagging<Mix11>);
 
 }  // namespace cpress::model

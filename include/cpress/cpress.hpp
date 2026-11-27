@@ -56,6 +56,10 @@
 //               times the size of the bytes coding it. The decoder
 //               allocates from 4.3 MiB at level 10 to 4,236.4 MiB at 25,
 //               and the stream. Frozen at v1.2.
+//   7   words3  As words2, with Mix11: Mix10Flag with byte classes and
+//               without order 6 (docs/stages/stage-9.md, section 3). The
+//               decoder allocates from 24.4 MiB at level 10 to 4,768.5 MiB
+//               at 25, and the stream. Experimental until v1.3.
 #pragma once
 
 #include <array>

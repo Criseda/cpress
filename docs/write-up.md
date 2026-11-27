@@ -858,7 +858,10 @@ The classical design is finished. What the stages measured and left:
   program of the same class at about the same speed. A second mixer and a
   third APM were measured on codec 5 and were not worth their time
   (−0.43% for 17% more). Issue #4 lists what else mcm does differently;
-  stage 8 took the shortcuts. Closing the gap to the top of the benchmark
+  stage 8 took the shortcuts. Stage 9, in progress, takes mcm's byte
+  classes and per-bit mixer weights: codec 7, `words3`, makes `enwik9` in
+  144,613,104 bytes, under mcm, and decodes more slowly than `words2`
+  (appendix, stage 9). Closing the gap to the top of the benchmark
   takes what cmix does: neural networks over hundreds of models, at
   several hundred times the running time [[7]](#references).
 - **For market data,** a new order's price against the best price levels
@@ -1342,6 +1345,23 @@ The timings on the 30 MB slice that decided the stage are in the stage 8
 brief ([docs/stages/stage-8.md](stages/stage-8.md), section 4). Its
 prototype's measurements, the variants not kept among them, are in
 section 2.
+
+### Stage 9: codec 7, `words3` (in progress)
+
+Sizes, which depend on the code and the input and not on the machine
+(`cpress c --codec words3`, at the commit that adds codec 7), every round
+trip checked:
+
+| File | `words3`, bytes | `words2`, bytes | Change |
+|---|---|---|---|
+| first 30 MB of `enwik8` | 5,729,199 | 5,998,210 | −4.48% |
+| `enwik8` | 18,033,918 | 18,838,765 | −4.27% |
+| `enwik9` | 144,613,104 | 151,497,460 | −4.54% |
+
+They are the prototype's, byte for byte, so its measurements stand
+([docs/stages/stage-9.md](stages/stage-9.md), section 2): what each part
+is worth, the variants not kept, and the times. The record, both speeds
+on a quiet machine and the source zip, comes with `v1.3`.
 
 ## References
 

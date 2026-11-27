@@ -158,9 +158,10 @@ void itch_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
     itch_decode_stream(payload, original_size, sink);
 }
 
-// Codecs 5 and 6: the word transform, then a model on the stream it
+// Codecs 5 to 7: the word transform, then a model on the stream it
 // writes: Mix10, mix9's model with an order-7 table and a level up to 25,
-// for codec 5; Mix10Flag, the same with shortcuts, for codec 6. The payload
+// for codec 5; Mix10Flag, the same with shortcuts, for codec 6; Mix11,
+// that with byte classes and without order 6, for codec 7. The payload
 // is the model's level for the stream, the stream's size in 8 bytes,
 // little-endian, then the stream as the bitwise driver codes bytes. The
 // level and the size are untrusted, like everything else in it: the level
@@ -168,6 +169,7 @@ void itch_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
 // the payload, and text::inverse holds the stream to the original size.
 constexpr std::string_view kWordsName = "words";
 constexpr std::string_view kWordsFlagName = "words2";
+constexpr std::string_view kWordsClassName = "words3";
 constexpr std::size_t kStreamSizeBytes = 8;
 
 template <LevelledModel Model, const std::string_view& Name>
@@ -202,7 +204,7 @@ constexpr std::uint8_t kDefaultCodecId = 3;
 
 // New codecs are added here. Ids are part of the file format: never reuse
 // or renumber one once an archive using it could exist.
-constexpr std::array<Codec, 7> kCodecs{{
+constexpr std::array<Codec, 8> kCodecs{{
     {.id = 0,
      .name = "stored",
      .summary = "no compression (stage 0 placeholder)",
@@ -250,6 +252,13 @@ constexpr std::array<Codec, 7> kCodecs{{
      .summary = "words, with a predicted-byte flag and skipped work",
      .encode = &words_encode<model::Mix10Flag, kWordsFlagName>,
      .decode = &words_decode<model::Mix10Flag, kWordsFlagName>},
+    // Codec 7: codec 6 with byte classes, per-bit mixer weights and no
+    // order 6. Experimental until stage 9 is tagged.
+    {.id = 7,
+     .name = kWordsClassName,
+     .summary = "words2, with byte classes and mixer weights chosen per bit",
+     .encode = &words_encode<model::Mix11, kWordsClassName>,
+     .decode = &words_decode<model::Mix11, kWordsClassName>},
 }};
 
 // The default is one of them.

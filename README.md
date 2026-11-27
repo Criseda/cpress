@@ -110,7 +110,8 @@ once shipped its output never changes.
 | `mix9`, the default | A bit history in each context, a match model, two word contexts, and two adaptive probability maps refining the mix; made faster in stage 4 without changing a byte of its output | 3, 4 |
 | `itch` | The messages of a NASDAQ TotalView-ITCH 5.0 feed, coded against the orders they describe, with the same coder and mixer | 5 |
 | `words` | Text with its frequent words replaced by codes from a dictionary of the input's own words, then `mix9`'s model with an order-7 table and four times the memory | 7 |
-| `words2` | `words` with shortcuts: a byte the match model is sure of is coded as one decision, and the APMs and the mixer skip bits the model is already sure of. The smallest for text | 8 |
+| `words2` | `words` with shortcuts: a byte the match model is sure of is coded as one decision, and the APMs and the mixer skip bits the model is already sure of | 8 |
+| `words3` | `words2` with byte classes: two contexts of the classes of recent bytes, mixer weights chosen per bit by them, and no order-6 table. The smallest for text; experimental until `v1.3` | 9 |
 
 Every codec but `mix9` is asked for by name: `--codec words2`.
 
@@ -222,6 +223,7 @@ match the header.
 | 4 | `itch` | One byte, the model's memory level, 10 to 23; then arithmetic-coded bits and 4 flush bytes (frozen at `v0.5`) |
 | 5 | `words` | One byte, the model's memory level, 10 to 25; the size of the word stream, 8 bytes; then arithmetic-coded bits and 4 flush bytes (frozen at `v1.1`) |
 | 6 | `words2` | As `words`, with a flag before some bytes (frozen at `v1.2`) |
+| 7 | `words3` | As `words2`, with a larger model (experimental until `v1.3`) |
 
 <details>
 <summary><b>Each codec's payload in detail</b></summary>
@@ -276,6 +278,12 @@ last bit the guess rules out. A byte can cost one decision instead of
 eight, so the stream may be up to 32,768 times the size of the bytes
 coding it. Its model is 4.3 MiB at level 10 and 4,236.4 MiB at 25.
 
+`words3` codes the same stream as `words2`, flag and all, with a larger
+model ([docs/stages/stage-9.md](docs/stages/stage-9.md), section 3): two
+history tables keyed by the classes of the last 12 and 6 bytes, none for
+order 6, and 262,144 mixer weight sets chosen per bit. Its model is 24.4
+MiB at level 10 and 4,768.5 MiB at 25.
+
 </details>
 
 ## Design rules
@@ -306,7 +314,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 6 | Write-up and release | done: [the write-up](docs/write-up.md); `enwik9` 165,953,692 bytes, and 97,522 for the decompressor |
 | 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
 | 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | done: `words2`, `enwik9` 151,497,460 bytes and 112,714 for the decompressor, compressing 18% and decompressing 14% faster than `words` (target smaller than `words` and faster both ways) |
-| 9 | Past mcm 0.83: codec 7 | in progress (target under 144,934,149 bytes of `enwik9` in all, compressing under 394 ns a byte, decompressing no slower than `words2`) |
+| 9 | Past mcm 0.83: codec 7 | in progress: `words3` makes `enwik9` in 144,613,104 bytes; its speeds and `v1.3` to come (target under 144,934,149 bytes in all, compressing under 394 ns a byte and decompressing under 898) |
 
 ## Layout
 
