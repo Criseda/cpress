@@ -211,24 +211,6 @@ void test_next_words_matches_stage_3() {
     CHECK(matches);
 }
 
-// remarked() is table_keys() at another marker: from either nibble's keys
-// to any marker, in contexts with classes and words of their own.
-template <typename Model>
-void test_remarked_keys_are_the_keys() {
-    typename Model::ByteContext context;
-    bool same = true;
-    for (const char c : std::string_view("Remarked keys, 2 nibbles.\n")) {
-        context = Model::next_context(context, static_cast<std::uint8_t>(c));
-        const auto first = Model::table_keys(context, 0);
-        for (std::uint32_t marker = model::kNibbleDone; marker < 2 * model::kNibbleDone; ++marker) {
-            const auto keys = Model::table_keys(context, marker);
-            same =
-                same && Model::remarked(first, marker) == keys && Model::remarked(keys, 0) == first;
-        }
-    }
-    CHECK(same);
-}
-
 // The inputs the hint tests run over: text, where matches run and the
 // decoder's guess is often right, and random bytes, where it is not.
 std::array<cpress::Bytes, 2> hint_inputs() {
@@ -531,8 +513,6 @@ void run_mix9_tests() {
     test_deterministic();
     test_order2_cap_changes_nothing();
     test_next_words_matches_stage_3();
-    test_remarked_keys_are_the_keys<Mix9>();
-    test_remarked_keys_are_the_keys<Mix11>();
     test_hints_change_no_prediction();
     test_prefetched_keys_are_the_keys_used<Mix9>();
     test_prefetched_keys_are_the_keys_used<Mix11>();

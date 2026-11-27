@@ -339,16 +339,6 @@ public:
         return keys;
     }
 
-    // `keys`, the table keys of a context at one marker, as they are at
-    // `marker`: every key ends in its marker's kMarkerBits, and nothing else
-    // in it depends on the marker. Cheaper than table_keys() again.
-    [[nodiscard]] static constexpr std::array<std::uint64_t, kTables> remarked(
-        std::array<std::uint64_t, kTables> keys, std::uint32_t marker) noexcept {
-        constexpr std::uint64_t kKeep = ~((std::uint64_t{1} << kMarkerBits) - 1);
-        for (std::uint64_t& key : keys) key = (key & kKeep) | marker;
-        return keys;
-    }
-
     // The marker of the second nibble of `byte`: the node its first nibble
     // ends on (context_key()).
     [[nodiscard]] static constexpr std::uint32_t second_nibble_marker(std::uint32_t byte) noexcept {
@@ -446,9 +436,8 @@ public:
     // itself selects with.
     [[nodiscard]] Lookahead lookahead(std::uint32_t byte, std::uint32_t next) const noexcept {
         const ByteContext after = next_context(context_, byte);
-        const std::array<std::uint64_t, kTables> first = table_keys(after, kFirstNibble);
-        return {.first_nibble = first,
-                .second_nibble = remarked(first, second_nibble_marker(next)),
+        return {.first_nibble = table_keys(after, kFirstNibble),
+                .second_nibble = table_keys(after, second_nibble_marker(next)),
                 .context = after};
     }
 
@@ -523,8 +512,8 @@ public:
         const noexcept {
         assert(marker_ == kFirstNibble && (node_ >> kSecondNibbleBits) == 1);
         const std::uint32_t nibble = (node_ - (1U << kSecondNibbleBits)) * 2;
-        return {remarked(first_keys_, kNibbleDone + nibble),
-                remarked(first_keys_, kNibbleDone + nibble + 1)};
+        return {table_keys(context_, kNibbleDone + nibble),
+                table_keys(context_, kNibbleDone + nibble + 1)};
     }
 
     // The context after each byte still possible when kNextByteBits of it
@@ -713,11 +702,9 @@ private:
         excluded_.reset();
     }
 
-    // Points every table at its slot for the nibble about to be coded. The
-    // second nibble's keys are the first's, remarked.
+    // Points every table at its slot for the nibble about to be coded.
     void select_slots() noexcept {
-        if (marker_ == kFirstNibble) first_keys_ = table_keys(context_, kFirstNibble);
-        const std::array<std::uint64_t, kTables> keys = remarked(first_keys_, marker_);
+        const std::array<std::uint64_t, kTables> keys = table_keys(context_, marker_);
         for (std::size_t i = 0; i < kTables; ++i) tables_[i].select(keys[i]);
     }
 
@@ -739,10 +726,9 @@ private:
     std::array<ProbabilityMap, kTables> maps_;  // the state map of each table
     MatchModel match_;
     Mixer<kInputs, kClasses> mixer_;
-    Apm by_partial_byte_;                              // APM 1
-    Apm by_previous_byte_;                             // APM 2
-    ByteContext context_;                              // of the byte being coded
-    std::array<std::uint64_t, kTables> first_keys_{};  // table_keys(context_, kFirstNibble)
+    Apm by_partial_byte_;                  // APM 1
+    Apm by_previous_byte_;                 // APM 2
+    ByteContext context_;                  // of the byte being coded
     std::size_t byte_weight_set_ = 0;      // with classes: this byte's weight sets, over kByteDone
     std::uint32_t marker_ = kFirstNibble;  // which nibble is being coded; see context_key()
     std::uint32_t node_ = 1;               // position in that nibble's tree, 1 to 15

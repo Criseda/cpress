@@ -385,7 +385,9 @@ not guessing: a wrong guess fills the line fill buffers with fetches no
 one reads, and a profile (VTune, 6 events) put the stalls there and in
 the loops that issue the fetches. Fetching the second nibble's keys by
 remarking the first nibble's, rather than hashing them again, changes no
-byte and saves about 1%; codec 7 takes it.
+byte and saved about 1% in the prototype. In codec 7's build it made no
+clear difference to codec 7 and made codecs 3, 5 and 6 3 to 5% slower
+compressing on `e30`, so it was left out (section 3).
 
 **The decision,** 27 November: option 1 without order 6. The size stays
 the target, decompressing about 14% slower than `words2` is allowed, and
@@ -453,12 +455,9 @@ archives and checksums are unchanged. The classes and their keys are
 rate share one 64-byte line, and the next bit's set is prefetched; both
 were in the prototype and change no byte.
 
-One change reaches every model, and is the exception to the template
-parameters: the second nibble's keys are the first nibble's remarked,
-not hashed again (section 2). It changes no byte, which the golden
-archives and checksums of codecs 3, 5 and 6 show, and the exit's check
-that those codecs are no slower covers its time. `ByteContext` carries a
-class history in every model; without classes it stays 0.
+`ByteContext` carries a class history in every model; without classes
+it stays 0. Removing it from the other models, through an empty base,
+made no difference to their speed on `e30`.
 
 **Format.** Id 7, name `words3`. The payload is `words2`'s: the level
 byte, 10 to 25, the word stream's size in 8 bytes, then the coded stream
