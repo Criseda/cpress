@@ -253,7 +253,7 @@ constexpr std::array<Codec, 8> kCodecs{{
      .encode = &words_encode<model::Mix10Flag, kWordsFlagName>,
      .decode = &words_decode<model::Mix10Flag, kWordsFlagName>},
     // Codec 7: codec 6 with byte classes, per-bit mixer weights and no
-    // order 6. Experimental until stage 9 is tagged.
+    // order 6. Frozen at v1.3: its output is permanent.
     {.id = 7,
      .name = kWordsClassName,
      .summary = "words2, with byte classes and mixer weights chosen per bit",

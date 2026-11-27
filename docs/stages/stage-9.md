@@ -499,7 +499,7 @@ guessed prefetching in the decoder (slower).
       898, on `enwik9`; codecs 3, 5 and 6 no slower than at `v1.2` on
       `e30`, if the driver or ContextMix changed.
 - [x] The write-up, README, roadmap and `cpress.hpp` updated.
-- [ ] Tag `v1.3`, then a close-out pull request freezing codec 7 with its
+- [x] Tag `v1.3`, then a close-out pull request freezing codec 7 with its
       golden archive and checksums, as #18 and #21 did.
 
 ## What review will look at
