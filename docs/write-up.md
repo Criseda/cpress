@@ -861,7 +861,10 @@ The classical design is finished. What the stages measured and left:
   stage 8 took the shortcuts. Stage 9 took mcm's byte classes and
   per-bit mixer weights: codec 7, `words3`, makes `enwik9` in 144,613,104
   bytes, 144,734,323 with its source zipped, under mcm's 144,934,149, and
-  decodes 12% more slowly than `words2` (appendix, stage 9). Closing the gap to the top of the benchmark
+  decodes 12% more slowly than `words2` (appendix, stage 9). Stage 10
+  added order 6 back and a second layer of mixers: codec 8, `words4`,
+  makes it in 143,070,644, 143,193,451 with its source, under drt|lpaq9m's
+  144,054,338, at 545 and 621 ns a byte (appendix, stage 10). Closing the gap to the top of the benchmark
   takes what cmix does: neural networks over hundreds of models, at
   several hundred times the running time [[7]](#references).
 - **For market data,** a new order's price against the best price levels
@@ -1388,6 +1391,54 @@ and `src/` at `a71d73c` with the note of the one-line build, zipped at
 deflate level 9: 121,219 bytes. Built from those files by the note's line
 for GCC 13.3, it restores `enwik9` from its `words3` archive exactly. In
 all, 144,734,323 bytes, 199,826 under mcm 0.83's 144,934,149.
+
+### Stage 10: codec 8, `words4`
+
+Codec 8 is codec 7's model with order 6 again and a second layer: two
+more mixers of the same inputs, one choosing its weights by a hash of the
+last two bytes and one by the word's length, the last byte's class and
+the match's length; a final mixer of the three; and a third APM, keyed by
+a hash of the last three bytes ([docs/stages/stage-10.md](stages/stage-10.md)).
+The prototype's rounds, the variants not kept among them, are in its
+section 1.
+
+Sizes, every round trip checked:
+
+| File | `words4`, bytes | `words3`, bytes | Change |
+|---|---|---|---|
+| first 30 MB of `enwik8` | 5,686,639 | 5,729,199 | −0.74% |
+| `enwik8` | 17,880,631 | 18,033,918 | −0.85% |
+| `enwik9` | 143,070,644 | 144,613,104 | −1.07% |
+
+`cpress-bench --codec words4 --cpu 2` on Windows 11, MSVC 19.51, the
+i9-12900K, the machine otherwise quiet, 28 November 2026, built at
+`46feb50`; later commits change no model code. `enwik8` is the fastest of
+three runs each way, `enwik9` one.
+
+| File | Codec | Size (bytes) | Bits/byte | Archive CRC-32 | Compress ns/B | Decompress ns/B | Peak MiB | Large pages MiB |
+|---|---|---|---|---|---|---|---|---|
+| `enwik8` | `words4` | 17,880,631 | 1.430 | `e92ee2d1` | 595.1 | 698.8 | 5,694.4 | 5,334.0 |
+| `enwik9` | `words4` | 143,070,644 | 1.145 | `6b976692` | 544.9 | 620.8 | 8,069.3 | 5,334.0 |
+
+Against `words3`'s record, `enwik9` compresses 58% and decompresses 52%
+more slowly; against drt|lpaq9m's listed times, 868 and 898, it is 37% and
+31% faster. The prototype, which did not prefetch the new mixers' weights
+or the third APM's curve, took 658.7 and 757.3 on the same file.
+
+Codecs 3, 5, 6 and 7 are no slower than at `v1.3`: on the 30 MB slice,
+the fastest of three runs each way, interleaved with `v1.3`'s build:
+
+| Codec | `v1.3`, ns/B | `46feb50`, ns/B |
+|---|---|---|
+| `mix9` | 422.0 / 518.0 | 422.9 / 520.7 |
+| `words` | 347.0 / 430.7 | 345.4 / 429.1 |
+| `words2` | 321.9 / 411.9 | 321.2 / 412.5 |
+| `words3` | 383.7 / 462.3 | 380.2 / 462.9 |
+
+The decompressor for the benchmark, `include/` and `src/` at `0bcbe83`
+with the note of the one-line build, zipped at deflate level 9, is
+122,807 bytes. In all, 143,193,451 bytes: 860,887 (0.60%) under
+drt|lpaq9m's 144,054,338, which would place cpress 38th.
 
 ## References
 

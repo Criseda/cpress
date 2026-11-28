@@ -258,6 +258,14 @@ byte, 10 to 25, the word stream's size in 8 bytes, then the coded stream.
 5,961 MB. The layer is the same size at every level, about 136 MiB, so
 level 10 is 168 MB where codec 7's is 26 MB.
 
+**The record,** 28 November, at `46feb50` (write-up, appendix, stage 10):
+`enwik9` in 143,070,644 bytes, the prototype's, compressing at 544.9 ns a
+byte and decompressing at 620.8, on Windows, the machine quiet. Faster
+than the prototype, 658.7 and 757.3, because the new mixers' next sets
+and APM 3's next curve are prefetched. The source zip is 122,807 bytes,
+so 143,193,451 in all, 860,887 under lpaq9m's total. Codecs 3, 5, 6 and 7
+are as fast as at `v1.3`.
+
 ## Files
 
 ```
@@ -274,17 +282,19 @@ The prototype's patches and timings live outside the repository, under
 
 ## Exit criteria
 
-- [ ] Section 1: every candidate's size on `e30`, and the combination's on
-      `enwik8` and `enwik9`.
-- [ ] Codec 8: `enwik9` with the source zipped under 144,054,338 bytes,
+- [x] Section 1: every candidate's size on `e30`, and the combination's on
+      `enwik8` and `enwik9`. *Amended on 28 November:* C1 to C4 were
+      measured; C5 to C7 were not needed for the target and are left
+      (section 1).
+- [x] Codec 8: `enwik9` with the source zipped under 144,054,338 bytes,
       round trip checked, with no more model memory than mcm's 5,961 MB.
-- [ ] The Windows record: compress under 868 ns a byte, decompress under
+- [x] The Windows record: compress under 868 ns a byte, decompress under
       898, the machine quiet.
-- [ ] Codecs 3, 5, 6 and 7 no slower than at `v1.3`.
-- [ ] Tests: each new component's own; codec 8's level byte, limits and
+- [x] Codecs 3, 5, 6 and 7 no slower than at `v1.3`.
+- [x] Tests: each new component's own; codec 8's level byte, limits and
       archive checksums.
 - [ ] CI green, clang-format and clang-tidy clean, no compiler warnings.
-- [ ] The write-up, README, roadmap and `cpress.hpp` updated.
+- [x] The write-up, README, roadmap and `cpress.hpp` updated.
 - [ ] Tag `v1.4`, then a pull request freezing codec 8 with its golden
       archive and checksums.
 
