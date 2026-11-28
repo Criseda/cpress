@@ -80,7 +80,7 @@ static_assert(Mix10::kOrderOf == std::array{1, 2, 3, 4, 5, 6, 7});
 
 // Mix12, codec 8's model: Mix11 with order 6 again, so thirteen inputs, and
 // a second layer. The layer's two mixers, final mixer and third APM are
-// the same size at every level, about 137 MiB.
+// the same size at every level, about 136 MiB.
 static_assert(Mix12::kOrderOf == Mix10::kOrderOf);
 static_assert(Mix12::kTables == 11 && Mix12::kInputs == 13);
 static_assert(Mix12::kMaxLevel == Mix11::kMaxLevel);

@@ -157,11 +157,114 @@ With the source zip, about 125,000 bytes, C2 and C3 alone come to about
 mcm's memory. The times on `e30` (not shown) rose more, as stage 9 found:
 there, page faults dominate.
 
+**Round 1,** 28 November, the machine quiet, new switches in the same
+prototype (patch in `H:\cpress-corpus\stage10\proto\`). Each on top of
+C1, C2 and C3 (5,707,888 on `e30`):
+
+| Variant | `e30`, bytes | Change |
+|---|---|---|
+| the second mixer's sets chosen by a 12-bit hash of the last two bytes, not the last byte and match length | 5,699,524 | −0.15% |
+| the second mixer's sets by the last byte and the class before it | 5,703,305 | −0.08% |
+| the second mixer's sets by word length class, class of the last byte and match length (C4) | 5,711,676 | +0.07% |
+| a third mixer, its sets as in the row above (C4), into the final mixer | 5,703,269 | −0.08% |
+| the mixers skip updates as codec 7's does, the final mixer never | 5,705,075 | −0.05% |
+| APM 3 keyed by a 12-bit hash of the last three bytes, not two | 5,706,285 | −0.03% |
+| APM 3 keyed by the word | 5,713,701 | +0.10% |
+| APM 3 keyed by the last three classes | 5,709,898 | +0.04% |
+| the final mixer's sets also by match length | 5,708,436 | +0.01% |
+| the final mixer's sets also by the class of the last byte | 5,708,077 | +0.00% |
+
+Skipping the updates is smaller and faster both: a mixer that learns
+from a bit it already predicted within 20/4096 moves its weights toward
+noise. The word length is worth more in a mixer of its own than in the
+second mixer's choice, where it replaces the hash.
+
+**Round 2,** the winners together, `e30` then `enwik9`, every round trip
+checked:
+
+| Configuration | `e30`, bytes | `enwik9`, bytes | Change from codec 7 | Compress ns/B | Decompress ns/B |
+|---|---|---|---|---|---|
+| R2: C1, the hashed second mixer, C3, the skip | 5,696,026 | 143,319,068 | −0.89% | 605.6* | 683.8* |
+| R2, APM 3 by three bytes | 5,693,134 | | | | |
+| R2, the third mixer | 5,689,405 | | | | |
+| **R2, both** | **5,686,639** | **143,070,644** | **−1.07%** | **658.7** | **757.3** |
+
+\* A build ran during part of this one.
+
+R2 with both is codec 8: 0.17% smaller than R2 for 9% more time, and
+with the source zip about 143.2 million, some 850,000 bytes under
+lpaq9m, compressing 24% and decompressing 16% faster than its listed
+times.
+
+Not tried: C5, order 0 and order 8 (order 8's table would take the model
+past mcm's memory); C6, two orders in one line; and C7, the rates. The
+target was passed without them, and each is a candidate for later.
+
+**What lpaq9m is.** The benchmark's notes say: lpaq1 (Matt Mahoney,
+2007) is orders 1 to 4 and 6, a word and a match model, in nibble hash
+tables of bit histories, one mixer chosen by a small context, and two
+APMs; Alexander Rhatushnyak's lpaq9 series tuned it for English text and
+put drt in front, a dictionary transform whose English dictionary ships
+with the program and is counted in its size. cpress's model is a
+superset of lpaq1's. What lpaq9m has that cpress does not is the shipped
+dictionary, built from English rather than from the input, which this
+project rules out. The part of the idea that carries over, codes that
+group similar words, cpress's transform already does in its own way: its
+dictionary is alphabetical within each code length, so words that share
+a beginning share a code's first byte.
+
+**What the second layer takes from where.** Several mixers of the same
+inputs with differently chosen weights, and a mixer of their outputs, are
+paq8's (Matt Mahoney, 2005 onward), where a final mixer combines the
+first layer's outputs. The choices of weights, the update skip and the
+APM's context here are this project's, from the rounds above.
+
+## 2. Codec 8
+
+**What it takes.** Codec 7's model, `Mix11`, with order 6 back and a
+second layer, as R2 with both:
+
+- **Two more mixers** of the same thirteen inputs. One chooses its weight
+  set by a 12-bit hash of the last two bytes and the partial byte,
+  1,048,576 sets of 64 bytes, 64 MiB. The other by the word's length
+  class (no letters, 1, 2, 3 or 4, 5 or 6, 7 or more), the last byte's
+  class, the match's length class and the partial byte, 98,304 sets,
+  6 MiB. The word's length counts the letters since the last byte that is
+  not one, the transform's codes included, as the word contexts do.
+- **A final mixer** of the three mixers' outputs, a weight set per partial
+  byte. Every mixer's rate decays, as codec 7's does.
+- **The update rule.** The three mixers skip a bit their final output
+  predicted within 20/4096, as codec 7's mixer does; the final mixer
+  learns every bit coded bit by bit.
+- **APM 3,** keyed by a 12-bit hash of the last three bytes and the
+  partial byte, 1,048,576 contexts, 66 MiB. The output is the mean of the
+  final mixer's and the three APMs', where codec 7 weighs APM 2 twice; the
+  APMs are skipped as before.
+
+The hash is the top 12 bits of the low 32 bits of the bytes times
+0x9E3779B1, 2^32 over the golden ratio.
+
+**Where it lives.** A sixth template parameter of `ContextMix`, `Layered`,
+which needs the classes and the shortcuts; `Mix12 =
+ContextMix<7, 25, true, true, 0, true>`. The layer is a member struct that
+models without it hold as an empty one, so codecs 3, 5, 6 and 7 compile
+to what they were. The next bit's weight sets and APM 3's curve are
+prefetched, as codec 7's set is; neither changes a byte.
+
+**Format.** Id 8, name `words4`. The payload is `words3`'s: the level
+byte, 10 to 25, the word stream's size in 8 bytes, then the coded stream.
+
+**Memory.** 5,679,641,508 bytes at level 25 (5,416.5 MiB), under mcm's
+5,961 MB. The layer is the same size at every level, about 136 MiB, so
+level 10 is 168 MB where codec 7's is 26 MB.
+
 ## Files
 
 ```
 docs/stages/stage-10.md      this brief; 10a's record, 10b's design
-src/, include/, tests/       codec 8, its tests and its limits (paths decided in 10b)
+src/model/mix9.hpp           Mix12: the Layered parameter
+src/codecs.cpp               codec 8
+tests/                       Mix12's keys, hints and word length; codec 8's checksums and level byte
 docs/figures/, write-up.md   the new point and the records
 README.md, docs/roadmap.md, CLAUDE.md
 ```

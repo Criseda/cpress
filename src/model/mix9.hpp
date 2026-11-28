@@ -60,13 +60,15 @@
 // Five models, one class. ContextMix is a template on the number of byte
 // contexts, the largest level, whether it takes shortcuts, whether it uses
 // byte classes, an order it skips, and whether it has a second layer, and
-// everything above is written in terms of them. Mix9 is ContextMix<6, 23>, codec 3's model, frozen
-// at v0.3. Mix10 is ContextMix<7, 25>, codec 5's: an order-7 table as well, so ten predictions, and
-// a largest level with four times the memory, for the word streams of files of a gigabyte
-// (docs/stages/stage-7.md, sections 3 and 4), frozen at v1.1. Mix10Flag is Mix10 with shortcuts,
-// codec 6's, frozen at v1.2. Mix11 is Mix10Flag with classes and without
-// order 6, codec 7's: eleven predictions, frozen at v1.3. Mix12 is Mix11
-// with order 6 again and a second layer, codec 8's: twelve predictions.
+// everything above is written in terms of them. Mix9 is ContextMix<6, 23>,
+// codec 3's model, frozen at v0.3. Mix10 is ContextMix<7, 25>, codec 5's:
+// an order-7 table as well, so ten predictions, and a largest level with
+// four times the memory, for the word streams of files of a gigabyte
+// (docs/stages/stage-7.md, sections 3 and 4), frozen at v1.1. Mix10Flag is
+// Mix10 with shortcuts, codec 6's, frozen at v1.2. Mix11 is Mix10Flag with
+// classes and without order 6, codec 7's: eleven predictions, frozen at
+// v1.3. Mix12 is Mix11 with order 6 again and a second layer, codec 8's:
+// twelve predictions.
 //
 // Shortcuts: work skipped where the model is already sure, measured in
 // docs/stages/stage-8.md.
@@ -682,7 +684,7 @@ private:
     struct SecondLayer {
         Mixer<kInputs, true> by_order2{kHashes * kByteDone};
         Mixer<kInputs, true> by_word{kWordSets * kByteDone};
-        Mixer<kLayerInputs, true> final{kByteDone};
+        Mixer<kLayerInputs, true> final_mixer{kByteDone};
         Apm by_order3{kHashes * kByteDone};
 
         [[nodiscard]] static constexpr std::uint64_t memory_bytes() noexcept {
@@ -757,10 +759,10 @@ private:
     {
         layer_.by_order2.select((order2_hash_ * kByteDone) + partial_);
         layer_.by_word.select((word_set_ * kByteDone) + partial_);
-        layer_.final.select(partial_);
+        layer_.final_mixer.select(partial_);
         const std::uint32_t by_order2 = layer_.by_order2.mix(st);
         const std::uint32_t by_word = layer_.by_word.mix(st);
-        return layer_.final.mix({stretch(first), stretch(by_order2), stretch(by_word)});
+        return layer_.final_mixer.mix({stretch(first), stretch(by_order2), stretch(by_word)});
     }
 
     // The second APM's context for the bit after `bit`: the partial byte
@@ -787,7 +789,7 @@ private:
                     layer_.by_word.update(bit);
                 }
             }
-            if constexpr (kLayered) layer_.final.update(bit);  // every bit
+            if constexpr (kLayered) layer_.final_mixer.update(bit);  // every bit
             if (apms_skipped_) return;
         } else {
             mixer_.update(bit);  // from its own output, not the refined one

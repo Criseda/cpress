@@ -111,7 +111,8 @@ once shipped its output never changes.
 | `itch` | The messages of a NASDAQ TotalView-ITCH 5.0 feed, coded against the orders they describe, with the same coder and mixer | 5 |
 | `words` | Text with its frequent words replaced by codes from a dictionary of the input's own words, then `mix9`'s model with an order-7 table and four times the memory | 7 |
 | `words2` | `words` with shortcuts: a byte the match model is sure of is coded as one decision, and the APMs and the mixer skip bits the model is already sure of | 8 |
-| `words3` | `words2` with byte classes: two contexts of the classes of recent bytes, mixer weights chosen per bit by them, and no order-6 table. The smallest for text | 9 |
+| `words3` | `words2` with byte classes: two contexts of the classes of recent bytes, mixer weights chosen per bit by them, and no order-6 table | 9 |
+| `words4` | `words3` with order 6 again and a second layer: two more mixers with weights chosen other ways, a mixer of the three, and a third APM. The smallest for text; experimental until `v1.4` | 10 |
 
 Every codec but `mix9` is asked for by name: `--codec words2`.
 
@@ -224,6 +225,7 @@ match the header.
 | 5 | `words` | One byte, the model's memory level, 10 to 25; the size of the word stream, 8 bytes; then arithmetic-coded bits and 4 flush bytes (frozen at `v1.1`) |
 | 6 | `words2` | As `words`, with a flag before some bytes (frozen at `v1.2`) |
 | 7 | `words3` | As `words2`, with a larger model (frozen at `v1.3`) |
+| 8 | `words4` | As `words3`, with a larger model (experimental until `v1.4`) |
 
 <details>
 <summary><b>Each codec's payload in detail</b></summary>
@@ -283,6 +285,13 @@ model ([docs/stages/stage-9.md](docs/stages/stage-9.md), section 3): two
 history tables keyed by the classes of the last 12 and 6 bytes, none for
 order 6, and 262,144 mixer weight sets chosen per bit. Its model is 24.4
 MiB at level 10 and 4,768.5 MiB at 25.
+
+`words4` codes the same stream again, with `words3`'s model, order 6 and
+a second layer ([docs/stages/stage-10.md](docs/stages/stage-10.md),
+section 2): two more mixers of the same inputs, one choosing its weights
+by the last two bytes and one by the word's length, a mixer of the three,
+and a third APM keyed by the last three bytes. Its model is 160.5 MiB at
+level 10 and 5,416.5 MiB at 25.
 
 </details>
 
