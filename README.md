@@ -73,17 +73,18 @@ the commit that made it.
 
 *Lower is smaller, left is faster. Filled points were measured on one
 machine, each program alone on one core; hollow ones are the Large Text
-Compression Benchmark's own, timed on other machines.*
+Compression Benchmark's own, timed on other machines. cpress codecs that
+another beats both on size and speed are left out.*
 
 | Input | cpress | For comparison | Record |
 |---|---|---|---|
-| `enwik8`, the first 100 MB of English Wikipedia | **18,033,918 bytes**, 1.443 bits a byte (`words3`) | `mix9`: 19,687,838. mcm 0.83: 18,234,412 | [stage 9](docs/write-up.md#stage-9-codec-7-words3) |
-| `enwik9`, the first 1 GB | **144,613,104 bytes**, 1.157 bits a byte (`words3`) | `mix9`: 165,953,692. mcm 0.83: 144,854,575, about as fast compressing and faster decompressing | [stage 9](docs/write-up.md#stage-9-codec-7-words3) |
+| `enwik8`, the first 100 MB of English Wikipedia | **17,880,631 bytes**, 1.430 bits a byte (`words4`) | `mix9`: 19,687,838. mcm 0.83: 18,234,412 | [stage 10](docs/write-up.md#stage-10-codec-8-words4) |
+| `enwik9`, the first 1 GB | **143,070,644 bytes**, 1.145 bits a byte (`words4`) | `mix9`: 165,953,692. With the decompressor, 143,193,451, under drt\|lpaq9m's 144,054,338 and faster both ways than its listed times. mcm 0.83: 144,854,575, faster | [stage 10](docs/write-up.md#stage-10-codec-8-words4) |
 | A NASDAQ ITCH day, 8.25 GB, 268,744,780 messages | **3.884 bytes a message** (`itch`) | Every field a column, each `zstd -19`: 8.036. `xz -9`: 9.261 | [stage 5](docs/write-up.md#stage-5-market-data) |
 | Another day, not used in design | **3.843 bytes a message** | The columns: 7.901 | [stage 5](docs/write-up.md#stage-5-market-data) |
 
-The price is speed: `words3` compresses `enwik9` at about 2.9 MB a second
-and decompresses it at 2.4, because the decoder must predict every bit
+The price is speed: `words4` compresses `enwik9` at about 1.8 MB a second
+and decompresses it at 1.6, because the decoder must predict every bit
 again. cpress is an archival tool, for files written once and read rarely.
 
 ## Quick start
@@ -111,7 +112,8 @@ once shipped its output never changes.
 | `itch` | The messages of a NASDAQ TotalView-ITCH 5.0 feed, coded against the orders they describe, with the same coder and mixer | 5 |
 | `words` | Text with its frequent words replaced by codes from a dictionary of the input's own words, then `mix9`'s model with an order-7 table and four times the memory | 7 |
 | `words2` | `words` with shortcuts: a byte the match model is sure of is coded as one decision, and the APMs and the mixer skip bits the model is already sure of | 8 |
-| `words3` | `words2` with byte classes: two contexts of the classes of recent bytes, mixer weights chosen per bit by them, and no order-6 table. The smallest for text | 9 |
+| `words3` | `words2` with byte classes: two contexts of the classes of recent bytes, mixer weights chosen per bit by them, and no order-6 table | 9 |
+| `words4` | `words3` with order 6 again and a second layer: two more mixers with weights chosen other ways, a mixer of the three, and a third APM. The smallest for text; experimental until `v1.4` | 10 |
 
 Every codec but `mix9` is asked for by name: `--codec words2`.
 
@@ -224,6 +226,7 @@ match the header.
 | 5 | `words` | One byte, the model's memory level, 10 to 25; the size of the word stream, 8 bytes; then arithmetic-coded bits and 4 flush bytes (frozen at `v1.1`) |
 | 6 | `words2` | As `words`, with a flag before some bytes (frozen at `v1.2`) |
 | 7 | `words3` | As `words2`, with a larger model (frozen at `v1.3`) |
+| 8 | `words4` | As `words3`, with a larger model (experimental until `v1.4`) |
 
 <details>
 <summary><b>Each codec's payload in detail</b></summary>
@@ -284,6 +287,13 @@ history tables keyed by the classes of the last 12 and 6 bytes, none for
 order 6, and 262,144 mixer weight sets chosen per bit. Its model is 24.4
 MiB at level 10 and 4,768.5 MiB at 25.
 
+`words4` codes the same stream again, with `words3`'s model, order 6 and
+a second layer ([docs/stages/stage-10.md](docs/stages/stage-10.md),
+section 2): two more mixers of the same inputs, one choosing its weights
+by the last two bytes and one by the word's length, a mixer of the three,
+and a third APM keyed by the last three bytes. Its model is 160.5 MiB at
+level 10 and 5,416.5 MiB at 25.
+
 </details>
 
 ## Design rules
@@ -315,6 +325,7 @@ The full conventions are in [docs/style.md](docs/style.md).
 | 7 | Text, toward the benchmark's frontier | done: `words`, `enwik9` 151,906,618 bytes and 104,990 for the decompressor, compressing in 365 ns a byte (target under 160,364,392 in all, and 394 ns) |
 | 8 | Shortcuts: a predicted-byte flag, and work skipped where the model is sure | done: `words2`, `enwik9` 151,497,460 bytes and 112,714 for the decompressor, compressing 18% and decompressing 14% faster than `words` (target smaller than `words` and faster both ways) |
 | 9 | Past mcm 0.83: codec 7 | done, `v1.3`: `words3`, `enwik9` 144,613,104 bytes and 121,219 for the decompressor, 144,734,323 in all, compressing at 344.7 ns a byte and decompressing at 409.0 (target under 144,934,149 in all, compressing under 394 and decompressing under 898) |
+| 10 | Up the frontier: codec 8 | done, awaiting `v1.4`: `words4`, `enwik9` 143,070,644 bytes and 122,807 for the decompressor, 143,193,451 in all, compressing at 544.9 ns a byte and decompressing at 620.8 (target under 144,054,338 in all, drt\|lpaq9m's, compressing under 868 and decompressing under 898) |
 
 ## Layout
 

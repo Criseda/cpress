@@ -60,6 +60,11 @@
 //               without order 6 (docs/stages/stage-9.md, section 3). The
 //               decoder allocates from 24.4 MiB at level 10 to 4,768.5 MiB
 //               at 25, and the stream. Frozen at v1.3.
+//   8   words4  As words3, with Mix12: Mix11 with order 6 and a second
+//               layer of mixers and an APM (docs/stages/stage-10.md,
+//               section 2). The decoder allocates from 160.5 MiB at level
+//               10 to 5,416.5 MiB at 25, and the stream. Experimental
+//               until v1.4.
 #pragma once
 
 #include <array>

@@ -170,6 +170,7 @@ void itch_decode(ByteView payload, std::uint64_t original_size, Bytes& output) {
 constexpr std::string_view kWordsName = "words";
 constexpr std::string_view kWordsFlagName = "words2";
 constexpr std::string_view kWordsClassName = "words3";
+constexpr std::string_view kWordsLayerName = "words4";
 constexpr std::size_t kStreamSizeBytes = 8;
 
 template <LevelledModel Model, const std::string_view& Name>
@@ -204,7 +205,7 @@ constexpr std::uint8_t kDefaultCodecId = 3;
 
 // New codecs are added here. Ids are part of the file format: never reuse
 // or renumber one once an archive using it could exist.
-constexpr std::array<Codec, 8> kCodecs{{
+constexpr std::array<Codec, 9> kCodecs{{
     {.id = 0,
      .name = "stored",
      .summary = "no compression (stage 0 placeholder)",
@@ -259,6 +260,13 @@ constexpr std::array<Codec, 8> kCodecs{{
      .summary = "words2, with byte classes and mixer weights chosen per bit",
      .encode = &words_encode<model::Mix11, kWordsClassName>,
      .decode = &words_decode<model::Mix11, kWordsClassName>},
+    // Codec 8: codec 7 with order 6 and a second layer of mixing.
+    // Experimental until stage 10 is tagged.
+    {.id = 8,
+     .name = kWordsLayerName,
+     .summary = "words3, with order 6 and a second layer of mixers and an APM",
+     .encode = &words_encode<model::Mix12, kWordsLayerName>,
+     .decode = &words_decode<model::Mix12, kWordsLayerName>},
 }};
 
 // The default is one of them.

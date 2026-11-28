@@ -16,13 +16,15 @@
 # and 6, are from stage 8's, on 19 November 2026, the same way: by
 # cpress-bench --codec words --cpu 2 --repeat 3 and --codec words2 at
 # 6f3e520, GCC 13.3. words3, codec 7, is from stage 9's, on 27 November
-# 2026, the same way, at a71d73c.
+# 2026, the same way, at a71d73c; words4, codec 8, from stage 10's, on 28
+# November, at 0bcbe83.
 label,cpress,source,version,options,bytes,compress_ns_per_byte,decompress_ns_per_byte
 mix6,yes,here,cpress d396ace,--codec mix6,22527170,356.3,392.6
 mix9,yes,here,cpress d396ace,--codec mix9,19687838,454.9,575.7
 words,yes,here,cpress 6f3e520,--codec words,18846644,374.1,475.9
 words2,yes,here,cpress 6f3e520,--codec words2,18838765,337.2,457.9
 words3,yes,here,cpress a71d73c,--codec words3,18033918,385.9,516.7
+words4,yes,here,cpress 0bcbe83,--codec words4,17880631,644.2,826.2
 gzip,no,here,gzip 1.12,-9,36445247,42.1,4.7
 bzip2,no,here,bzip2 1.0.8,-9,29008758,45.4,23.4
 zstd,no,here,zstd 1.5.5,--ultra -22,25333695,702.1,1.6

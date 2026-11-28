@@ -248,6 +248,28 @@ mcm 0.83 is 4.4% smaller and decompresses faster. Under mcm's total of
   decompressing at 409.0.
 - Tag `v1.3`. Done; codec 7 is frozen there.
 
+## Stage 10: up the frontier (done)
+
+Brief: [stage-10.md](stages/stage-10.md).
+
+At `v1.3`, `words3` is 39th, on both time frontiers and no memory one.
+drt|lpaq9m, 0.47% smaller, is 2.5 times slower; the next program
+smaller on a time frontier, durilca, is 11% smaller again.
+
+- A prototype of what stage 9 measured and left: order 6, a second mixer,
+  a third APM, the word's length in the mixer's choice, order 0 and 8,
+  and the rates retuned. Done: order 6, a second and a third mixer, a
+  final mixer and a third APM paid; orders 0 and 8 and the rates were
+  not needed.
+- Codec 8: under 144,054,338 bytes of `enwik9` with the source zipped,
+  compressing under 868 ns a byte and decompressing under 898, with no
+  more model memory than mcm's 5,961 MB. Done: `words4` makes `enwik9`
+  in 143,070,644 bytes, 143,193,451 with its source zipped, compressing
+  at 544.9 ns a byte and decompressing at 620.8, in 5,416.5 MiB.
+- Tag `v1.4`.
+- If the owner takes it, a driver that streams its input and output, so
+  that the listed memory is about the model's (no archive changes).
+
 ## After 1.0
 
 Only if the classical design is finished and written up:
