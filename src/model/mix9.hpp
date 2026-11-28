@@ -57,16 +57,16 @@
 // weights and the APMs' nearer points learn each bit, except what the
 // shortcuts below skip; see each component.
 //
-// Four models, one class. ContextMix is a template on the number of byte
+// Five models, one class. ContextMix is a template on the number of byte
 // contexts, the largest level, whether it takes shortcuts, whether it uses
-// byte classes, and an order it skips, and everything above is written in
-// terms of them. Mix9 is ContextMix<6, 23>, codec 3's model, frozen at
-// v0.3. Mix10 is ContextMix<7, 25>, codec 5's: an order-7 table as well,
-// so ten predictions, and a largest level with four times the memory, for
-// the word streams of files of a gigabyte (docs/stages/stage-7.md,
-// sections 3 and 4), frozen at v1.1. Mix10Flag is Mix10 with shortcuts,
+// byte classes, an order it skips, and whether it has a second layer, and
+// everything above is written in terms of them. Mix9 is ContextMix<6, 23>, codec 3's model, frozen
+// at v0.3. Mix10 is ContextMix<7, 25>, codec 5's: an order-7 table as well, so ten predictions, and
+// a largest level with four times the memory, for the word streams of files of a gigabyte
+// (docs/stages/stage-7.md, sections 3 and 4), frozen at v1.1. Mix10Flag is Mix10 with shortcuts,
 // codec 6's, frozen at v1.2. Mix11 is Mix10Flag with classes and without
-// order 6, codec 7's: eleven predictions.
+// order 6, codec 7's: eleven predictions, frozen at v1.3. Mix12 is Mix11
+// with order 6 again and a second layer, codec 8's: twelve predictions.
 //
 // Shortcuts: work skipped where the model is already sure, measured in
 // docs/stages/stage-8.md.
@@ -93,6 +93,21 @@
 //                 partial byte: 65,536 contexts, 4 MiB.
 // Order 6 is skipped: on enwik9 its table was worth 0.28% of the size and
 // cost 12% of the decoding time.
+//
+// A second layer: codec 8's additions, measured in docs/stages/
+// stage-10.md, section 1. One mixer sees every input with weights chosen
+// one way; mixers with weights chosen other ways see the same inputs
+// differently, and a final mixer learns which to trust where.
+//   two mixers    of the same inputs as the first: one with weight sets
+//                 chosen by a 12-bit hash of the last two bytes, 64 MiB,
+//                 one by the word's length class, the last byte's class
+//                 and the match's length, 6 MiB; both also by the partial
+//                 byte. They learn when the first mixer does.
+//   final mixer   of the three mixers' outputs, a weight set per partial
+//                 byte. It learns every bit the model codes.
+//   APM 3         keyed by a 12-bit hash of the last three bytes and the
+//                 partial byte, 66 MiB, averaged in with the other two.
+// These are the same size at every level.
 //
 // Technique: this is the lpaq class of compressor, after Matt Mahoney's
 // lpaq1 (2007): bit-history states in checked nibble slots, read through
@@ -187,10 +202,13 @@ struct NoFlagModel {
     explicit constexpr NoFlagModel(int /*table_bits*/) noexcept {}
 };
 
+// What a model without a second layer holds in its place: nothing.
+struct NoSecondLayer {};
+
 }  // namespace detail
 
 template <int Orders, int MaxLevel, bool Shortcuts = false, bool Classes = false,
-          int SkippedOrder = 0>
+          int SkippedOrder = 0, bool Layered = false>
 class ContextMix {
 public:
     // The byte contexts: 1 to kOrders bytes, but kSkippedOrder, if not 0.
@@ -230,6 +248,11 @@ public:
     static constexpr bool kClasses = Classes;
     // The bias input: one unit of ln odds, always.
     static constexpr std::int32_t kBiasStretch = kStretchOne;
+
+    // Codec 8's second layer; see the top of this file. It mixes what codec
+    // 7's model mixes, so it needs the classes and the shortcuts.
+    static constexpr bool kLayered = Layered;
+    static_assert(!kLayered || (kClasses && kShortcuts));
 
     // The history tables: the orders, then the word and bigram contexts,
     // then with classes the long and short class contexts. The mixer's
@@ -293,6 +316,7 @@ public:
         bytes += Apm::memory_bytes(kPreviousByteContexts);
         bytes += Mixer<kInputs, kClasses>::memory_bytes(kWeightSets);
         if constexpr (kShortcuts) bytes += Flag::memory_bytes(flag_table_bits(level));
+        if constexpr (kLayered) bytes += SecondLayer::memory_bytes();
         return bytes;
     }
 
@@ -305,7 +329,8 @@ public:
         words::Words words;
         std::uint64_t word_key = words::word_key(0);         // the word table's, before the marker
         std::uint64_t bigram_key = words::bigram_key(0, 0);  // the bigram table's, likewise
-        std::uint64_t classes = 0;  // with classes, their history (byte_classes.hpp)
+        std::uint64_t classes = 0;      // with classes, their history (byte_classes.hpp)
+        std::uint32_t word_length = 0;  // with a second layer, letters since a non-letter
     };
 
     // The context of the byte after `byte`, if `context` is the context of
@@ -319,6 +344,9 @@ public:
                           .word_key = words::word_key(next.word),
                           .bigram_key = words::bigram_key(next.word, next.previous)};
         if constexpr (kClasses) after.classes = classes::next_history(context.classes, byte);
+        if constexpr (kLayered) {
+            after.word_length = words::is_letter(byte) ? context.word_length + 1 : 0;
+        }
         return after;
     }
 
@@ -369,7 +397,8 @@ public:
             st[kTables + 1] = kBiasStretch;
             mixer_.select((byte_weight_set_ * kByteDone) + partial_);
         }
-        const std::uint32_t mixed = mixer_.mix(st);
+        std::uint32_t mixed = mixer_.mix(st);
+        if constexpr (kLayered) mixed = mix_second_layer(st, mixed);
         const std::int32_t mixed_st = stretch(mixed);
         if constexpr (kShortcuts) {
             mixed_ = mixed;
@@ -382,6 +411,11 @@ public:
         const std::uint32_t refined = by_partial_byte_.refine(mixed_st, partial_byte_context());
         const std::uint32_t refined_by_previous =
             by_previous_byte_.refine(mixed_st, partial_ + (kByteDone * previous_byte));
+        if constexpr (kLayered) {
+            const std::uint32_t refined_by_order3 =
+                layer_.by_order3.refine(mixed_st, (order3_hash_ * kByteDone) + partial_);
+            return (mixed + refined + refined_by_previous + refined_by_order3) / 4;
+        }
         return (mixed + refined + (2 * refined_by_previous)) / 4;
     }
 
@@ -618,6 +652,47 @@ private:
     static constexpr std::size_t kPartialByteContexts = kByteDone * (kClasses ? kClassPairs : 1);
     static constexpr std::size_t kPreviousByteContexts = std::size_t{256} * kByteDone;
 
+    // The second layer: two more mixers of the same inputs, one with a
+    // weight set per hash of the last two bytes, one per word length class,
+    // class of the last byte and match length class, both also per partial
+    // byte; a final mixer of the three mixers' outputs, per partial byte;
+    // and a third APM, per hash of the last three bytes and partial byte.
+    // Every mixer's rate decays, as codec 7's does.
+    static constexpr int kHashBits = 12;
+    static constexpr std::size_t kHashes = std::size_t{1} << kHashBits;
+    static constexpr std::uint32_t kWordLengthClasses = 6;
+    static constexpr std::size_t kWordSets =
+        std::size_t{kWordLengthClasses} * classes::kClassCount * MatchModel::kMixerContexts;
+    static constexpr std::size_t kLayerInputs = 3;
+
+    // The top kHashBits of the low 32 bits of `bytes` times an odd constant
+    // (2^32 over the golden ratio): the hash of the last two or three bytes.
+    [[nodiscard]] static constexpr std::size_t hash_bytes(std::uint64_t bytes) noexcept {
+        return (static_cast<std::uint32_t>(bytes) * 0x9E3779B1U) >> (32 - kHashBits);
+    }
+
+    // A word's length, 0 to kWordLengthClasses - 1: no letters, 1, 2, 3 or
+    // 4, 5 or 6, 7 or more.
+    [[nodiscard]] static constexpr std::uint32_t word_length_class(std::uint32_t length) noexcept {
+        if (length < 3) return length;
+        if (length < 5) return 3;
+        return length < 7 ? 4 : 5;
+    }
+
+    struct SecondLayer {
+        Mixer<kInputs, true> by_order2{kHashes * kByteDone};
+        Mixer<kInputs, true> by_word{kWordSets * kByteDone};
+        Mixer<kLayerInputs, true> final{kByteDone};
+        Apm by_order3{kHashes * kByteDone};
+
+        [[nodiscard]] static constexpr std::uint64_t memory_bytes() noexcept {
+            return Mixer<kInputs, true>::memory_bytes(kHashes * kByteDone) +
+                   Mixer<kInputs, true>::memory_bytes(kWordSets * kByteDone) +
+                   Mixer<kLayerInputs, true>::memory_bytes(kByteDone) +
+                   Apm::memory_bytes(kHashes * kByteDone);
+        }
+    };
+
     // The marker of a first-nibble slot; see context_key().
     static constexpr std::uint32_t kFirstNibble = 0;
 
@@ -659,12 +734,33 @@ private:
         }
     }
 
-    // With classes: fetches the weight set the bit after `bit` will select,
-    // if it is in this byte. The next byte's sets depend on the match model,
-    // so they are not known until push_byte(). A hint; it changes nothing.
+    // With classes: fetches the weight sets the bit after `bit` will select,
+    // and with a second layer its third APM's curve, if that bit is in this
+    // byte. The next byte's depend on the byte, so they are not known until
+    // push_byte(). A hint; it changes nothing.
     void prefetch_next_weight_set(int bit) const noexcept {
         const std::uint32_t partial = (partial_ * 2) + static_cast<std::uint32_t>(bit);
-        if (partial < kByteDone) mixer_.prefetch((byte_weight_set_ * kByteDone) + partial);
+        if (partial >= kByteDone) return;
+        mixer_.prefetch((byte_weight_set_ * kByteDone) + partial);
+        if constexpr (kLayered) {
+            layer_.by_order2.prefetch((order2_hash_ * kByteDone) + partial);
+            layer_.by_word.prefetch((word_set_ * kByteDone) + partial);
+            layer_.by_order3.prefetch((order3_hash_ * kByteDone) + partial);
+        }
+    }
+
+    // The second layer: its two mixers mix `st`, and the final mixer mixes
+    // their outputs with `first`, the first mixer's.
+    [[nodiscard]] std::uint32_t mix_second_layer(const Mixer<kInputs>::Stretched& st,
+                                                 std::uint32_t first) noexcept
+        requires kLayered
+    {
+        layer_.by_order2.select((order2_hash_ * kByteDone) + partial_);
+        layer_.by_word.select((word_set_ * kByteDone) + partial_);
+        layer_.final.select(partial_);
+        const std::uint32_t by_order2 = layer_.by_order2.mix(st);
+        const std::uint32_t by_word = layer_.by_word.mix(st);
+        return layer_.final.mix({stretch(first), stretch(by_order2), stretch(by_word)});
     }
 
     // The second APM's context for the bit after `bit`: the partial byte
@@ -684,13 +780,21 @@ private:
     void learn_mix(int bit) noexcept {
         if constexpr (kShortcuts) {
             const std::uint32_t error = bit != 0 ? kProbOne - mixed_ : mixed_;
-            if (error >= kMixerSkipError) mixer_.update(bit);
+            if (error >= kMixerSkipError) {
+                mixer_.update(bit);
+                if constexpr (kLayered) {
+                    layer_.by_order2.update(bit);
+                    layer_.by_word.update(bit);
+                }
+            }
+            if constexpr (kLayered) layer_.final.update(bit);  // every bit
             if (apms_skipped_) return;
         } else {
             mixer_.update(bit);  // from its own output, not the refined one
         }
         by_partial_byte_.update(bit);
         by_previous_byte_.update(bit);
+        if constexpr (kLayered) layer_.by_order3.update(bit);
     }
 
     // At the end of a byte coded bit by bit. A guess the flag weighed but
@@ -717,6 +821,14 @@ private:
         if constexpr (kClasses) {
             byte_weight_set_ = (MatchModel::kMixerContexts * classes::last_two(context_.classes)) +
                                match_.mixer_context();
+            if constexpr (kLayered) {
+                order2_hash_ = hash_bytes(context_.history & 0xFFFF);
+                order3_hash_ = hash_bytes(context_.history & 0xFFFFFF);
+                const std::uint32_t length = word_length_class(context_.word_length);
+                word_set_ = (((length * classes::kClassCount) + classes::class_of(byte)) *
+                             MatchModel::kMixerContexts) +
+                            match_.mixer_context();
+            }
         } else {
             mixer_.select((MatchModel::kMixerContexts * byte) + match_.mixer_context());
         }
@@ -726,10 +838,14 @@ private:
     std::array<ProbabilityMap, kTables> maps_;  // the state map of each table
     MatchModel match_;
     Mixer<kInputs, kClasses> mixer_;
-    Apm by_partial_byte_;                  // APM 1
-    Apm by_previous_byte_;                 // APM 2
-    ByteContext context_;                  // of the byte being coded
-    std::size_t byte_weight_set_ = 0;      // with classes: this byte's weight sets, over kByteDone
+    Apm by_partial_byte_;              // APM 1
+    Apm by_previous_byte_;             // APM 2
+    ByteContext context_;              // of the byte being coded
+    std::size_t byte_weight_set_ = 0;  // with classes: this byte's weight sets, over kByteDone
+    std::conditional_t<kLayered, SecondLayer, detail::NoSecondLayer> layer_;
+    std::size_t order2_hash_ = 0;  // with a second layer: this byte's other two weight sets
+    std::size_t word_set_ = 0;     // and its third APM's context, over kByteDone
+    std::size_t order3_hash_ = 0;
     std::uint32_t marker_ = kFirstNibble;  // which nibble is being coded; see context_key()
     std::uint32_t node_ = 1;               // position in that nibble's tree, 1 to 15
     std::uint32_t partial_ = 1;            // the byte's bits so far, after a leading 1
@@ -751,13 +867,16 @@ using Mix9 = ContextMix<6, 23>;
 using Mix10 = ContextMix<7, 25>;
 using Mix10Flag = ContextMix<7, 25, true>;
 using Mix11 = ContextMix<7, 25, true, true, 6>;
+using Mix12 = ContextMix<7, 25, true, true, 0, true>;
 
-static_assert(Predictor<Mix9> && Predictor<Mix10> && Predictor<Mix10Flag> && Predictor<Mix11>);
+static_assert(Predictor<Mix9> && Predictor<Mix10> && Predictor<Mix10Flag> && Predictor<Mix11> &&
+              Predictor<Mix12>);
 // Without this, a hint whose signature drifted would leave the models short
 // of the concept, the coding loops would quietly stop calling it, and every
 // test of the output would still pass. The same holds for the flag.
 static_assert(Prefetching<Mix9> && Prefetching<Mix10> && Prefetching<Mix10Flag> &&
-              Prefetching<Mix11>);
-static_assert(!Flagging<Mix9> && !Flagging<Mix10> && Flagging<Mix10Flag> && Flagging<Mix11>);
+              Prefetching<Mix11> && Prefetching<Mix12>);
+static_assert(!Flagging<Mix9> && !Flagging<Mix10> && Flagging<Mix10Flag> && Flagging<Mix11> &&
+              Flagging<Mix12>);
 
 }  // namespace cpress::model

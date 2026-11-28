@@ -2,8 +2,8 @@
 // arithmetic, and the hints: they change no prediction, and the keys they
 // fetch for are the keys the model then selects. Then Mix10Flag's
 // shortcuts: when the flag is offered, what a hit and a miss do, and that
-// the hints change no byte of its output either. Mix11's keys and hints
-// are held to the same tests.
+// the hints change no byte of its output either. Mix11's and Mix12's keys
+// and hints are held to the same tests, and Mix12's word length is checked.
 #include "check.hpp"
 
 #include "codec/bitwise.hpp"
@@ -27,6 +27,7 @@ namespace {
 using model::Mix10;
 using model::Mix10Flag;
 using model::Mix11;
+using model::Mix12;
 using model::Mix9;
 
 static_assert(model::Predictor<Mix9>);
@@ -76,6 +77,15 @@ static_assert(Mix11::table_slot_bits(Mix11::kTables - 1, 25) == 25);          //
 static_assert(Mix11::memory_bytes(10) == 25'622'992);
 static_assert(Mix11::memory_bytes(25) == 5'000'147'152);
 static_assert(Mix10::kOrderOf == std::array{1, 2, 3, 4, 5, 6, 7});
+
+// Mix12, codec 8's model: Mix11 with order 6 again, so thirteen inputs, and
+// a second layer. The layer's two mixers, final mixer and third APM are
+// the same size at every level, about 137 MiB.
+static_assert(Mix12::kOrderOf == Mix10::kOrderOf);
+static_assert(Mix12::kTables == 11 && Mix12::kInputs == 13);
+static_assert(Mix12::kMaxLevel == Mix11::kMaxLevel);
+static_assert(Mix12::memory_bytes(10) == 168'262'820);
+static_assert(Mix12::memory_bytes(25) == 5'679'641'508);
 
 // table_slot_bits: orders 1 and 2 capped, the rest at the level.
 static_assert(Mix9::table_slot_bits(0, Mix9::kMaxLevel) == 14);
@@ -211,6 +221,20 @@ void test_next_words_matches_stage_3() {
     CHECK(matches);
 }
 
+// Mix12's word length: the letters since the last byte that is not one,
+// counting the transform's codes (128 and up) as letters, as the word
+// contexts do.
+void test_word_length_counts_letters() {
+    constexpr std::array<std::pair<std::string_view, std::uint32_t>, 5> kCases{
+        {{"", 0}, {"the", 3}, {"the ", 0}, {"a Zebra", 5}, {"x\xC3\xBC", 3}}};
+    for (const auto& [prefix, length] : kCases) {
+        Mix12::ByteContext context;
+        for (const char c : prefix)
+            context = Mix12::next_context(context, static_cast<std::uint8_t>(c));
+        CHECK(context.word_length == length);
+    }
+}
+
 // The inputs the hint tests run over: text, where matches run and the
 // decoder's guess is often right, and random bytes, where it is not.
 std::array<cpress::Bytes, 2> hint_inputs() {
@@ -253,7 +277,8 @@ bool selects(const Model& model, const std::array<std::uint64_t, Model::kTables>
 template <typename Context>
 bool same_context(const Context& a, const Context& b) {
     return a.history == b.history && a.words.word == b.words.word &&
-           a.words.previous == b.words.previous && a.classes == b.classes;
+           a.words.previous == b.words.previous && a.classes == b.classes &&
+           a.word_length == b.word_length;
 }
 
 // Starts coding `byte` as the bitwise driver does: a Flagging model may
@@ -516,13 +541,17 @@ void run_mix9_tests() {
     test_hints_change_no_prediction();
     test_prefetched_keys_are_the_keys_used<Mix9>();
     test_prefetched_keys_are_the_keys_used<Mix11>();
+    test_prefetched_keys_are_the_keys_used<Mix12>();
     test_decoded_candidates_are_the_keys_used<Mix9>();
     test_decoded_candidates_are_the_keys_used<Mix11>();
+    test_decoded_candidates_are_the_keys_used<Mix12>();
     test_flag_waits_for_a_long_match();
     test_flag_hit_is_the_whole_byte();
     test_miss_forces_only_the_last_bit();
     test_flag_hints_change_no_byte<Mix10Flag>();
     test_flag_hints_change_no_byte<Mix11>();
+    test_flag_hints_change_no_byte<Mix12>();
+    test_word_length_counts_letters();
 }
 
 }  // namespace cpress::test

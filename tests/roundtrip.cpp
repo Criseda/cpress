@@ -232,6 +232,7 @@ void test_decode_bitwise_limits() {
     // A Flagging model is held to its own, higher limit.
     static_assert(codec::kMaxExpansionFor<model::Mix10Flag> == codec::kMaxFlaggedExpansion);
     static_assert(codec::kMaxExpansionFor<model::Mix11> == codec::kMaxFlaggedExpansion);
+    static_assert(codec::kMaxExpansionFor<model::Mix12> == codec::kMaxFlaggedExpansion);
     const DecodePayload decode_flagged = [](cpress::ByteView coded, std::uint64_t size,
                                             cpress::Bytes& output) {
         model::Mix10Flag predictor(model::Mix10Flag::kMinLevel);
@@ -658,6 +659,16 @@ constexpr ArchiveChecksums kWordsClassChecksums{{
     {"itch messages", 0x6035406a},
 }};
 
+constexpr ArchiveChecksums kWordsLayerChecksums{{
+    {"empty", 0xaadbb351},
+    {"one byte", 0x6c72856d},
+    {"zeros 64 KiB", 0x0b867b0b},
+    {"random 1 MiB", 0x394f4f18},
+    {"every byte value", 0x3d2ed394},
+    {"repetitive text", 0x1426cf2d},
+    {"itch messages", 0xb717f66c},
+}};
+
 void check_determinism(std::string_view codec_name, const ArchiveChecksums& checksums,
                        const std::vector<Sample>& inputs) {
     const cpress::Codec* codec = cpress::find_codec(codec_name);
@@ -688,6 +699,7 @@ void test_determinism(const std::vector<Sample>& inputs) {
     check_determinism("words", kWordsChecksums, inputs);
     check_determinism("words2", kWordsFlagChecksums, inputs);
     check_determinism("words3", kWordsClassChecksums, inputs);
+    check_determinism("words4", kWordsLayerChecksums, inputs);
 }
 
 // Bytes needed to code `data` with the best possible order-0 model, i.e.
@@ -807,6 +819,7 @@ void run_roundtrip_tests(std::span<const char* const> files) {
     test_level_byte<model::Mix10>("words", &words_payload_at<model::Mix10>);
     test_level_byte<model::Mix10Flag>("words2", &words_payload_at<model::Mix10Flag>);
     test_level_byte<model::Mix11>("words3", &words_payload_at<model::Mix11>);
+    test_level_byte<model::Mix12>("words4", &words_payload_at<model::Mix12>);
     test_decodes_any_level<model::Mix6>("mix6", &bitwise_payload_at<model::Mix6>);
     test_decodes_any_level<model::Mix9>("mix9", &bitwise_payload_at<model::Mix9>);
     test_decodes_any_level<itch::MessageModel>("itch", &message_payload_at);
