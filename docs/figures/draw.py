@@ -443,8 +443,20 @@ def scatter_panel(svg, top, height, points, title, y_low, y_high):
                  weight=600 if p.accent else 400)
 
 
+def superseded(row, rows):
+    """Whether another of cpress's codecs is smaller than ROW and faster both
+    ways: such a codec is history, and is left out of the figure."""
+    def beats(other):
+        return (other is not row and other["cpress"] == "yes"
+                and int(other["bytes"]) < int(row["bytes"])
+                and float(other["compress_ns_per_byte"]) < float(row["compress_ns_per_byte"])
+                and float(other["decompress_ns_per_byte"]) < float(row["decompress_ns_per_byte"]))
+    return row["cpress"] == "yes" and any(beats(other) for other in rows)
+
+
 def ratio_speed(theme):
     rows = table("enwik8")
+    rows = [r for r in rows if not superseded(r, rows)]
     compress = [Point(r["label"], int(r["bytes"]) / 1e6, float(r["compress_ns_per_byte"]),
                       r["cpress"] == "yes", r["source"] != "here") for r in rows]
     decompress = [Point(r["label"], int(r["bytes"]) / 1e6, float(r["decompress_ns_per_byte"]),

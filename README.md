@@ -73,7 +73,8 @@ the commit that made it.
 
 *Lower is smaller, left is faster. Filled points were measured on one
 machine, each program alone on one core; hollow ones are the Large Text
-Compression Benchmark's own, timed on other machines.*
+Compression Benchmark's own, timed on other machines. cpress codecs that
+another beats both on size and speed are left out.*
 
 | Input | cpress | For comparison | Record |
 |---|---|---|---|

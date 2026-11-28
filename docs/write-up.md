@@ -19,16 +19,18 @@ skim for the names. [The design on one page](#the-design-on-one-page) is
 enough to follow any later section, and
 [the words used](#words-used-in-this-document), at the end, are there for
 a reader who starts in the middle. Each design that shipped is a *codec*
-with a name, `order0`, `mix6`, `mix9`, `itch`, `words` and `words2`, and
-an archive records which codec made it.
+with a name, `order0`, `mix6`, `mix9`, `itch`, `words`, `words2`,
+`words3` and `words4`, and an archive records which codec made it.
 
 The project has two results, and the second is the sentence above.
 
 - **Text.** `enwik8`, the first 100 MB of English Wikipedia, is the file
   text compressors are most often compared on. cpress makes it
-  18,838,765 bytes, under a fifth of its size: each byte of the input
-  costs 1.507 bits of archive on average, where it took 8. On `enwik9`,
-  the first gigabyte, it makes 151,497,460. Its first design at that
+  17,880,631 bytes, under a fifth of its size: each byte of the input
+  costs 1.430 bits of archive on average, where it took 8. On `enwik9`,
+  the first gigabyte, it makes 143,070,644, which with its decompressor
+  zipped would place 38th of the 238 programs in the Large Text
+  Compression Benchmark, faster both ways than the program above it. Its first design at that
   level, `mix9`, made `enwik8` 19,687,838 bytes, 0.3% smaller than lpaq1,
   the well-known program of the same kind it follows
   [[2]](#references).
@@ -679,13 +681,17 @@ does: a quarter of `enwik9`'s word stream, an eighth of `enwik8`'s.
 
 Compressors trade size for time, and no single number ranks them. Times
 here are in nanoseconds per byte of input, **ns/B**: 300 ns/B is about
-3.3 MB a second. The figure puts cpress's four text codecs beside the
-compressors people use, measured on one machine, each alone on one pinned
-processor, the fastest of three runs each way, every round trip checked.
+3.3 MB a second. The figure puts cpress's codecs beside the compressors
+people use, measured on one machine, each alone on one pinned processor,
+the fastest of three runs each way, every round trip checked. A codec
+that another of cpress's beats on size and both speeds, `mix9` and
+`words` (both beaten by `words2`), is in the table but not the figure.
 The appendix has the commands: stage 6's
 [sitting](#stage-6-the-text-compressors-on-enwik8), stage 7's for
 [mcm](#stage-7-mcm-083-on-this-machine), and stage 8's for
-[`words` and `words2`](#stage-8-codec-6-words2).
+[`words` and `words2`](#stage-8-codec-6-words2), stage 9's for
+[`words3`](#stage-9-codec-7-words3) and stage 10's for
+[`words4`](#stage-10-codec-8-words4).
 The three hollow points are among the strongest programs the Large Text
 Compression Benchmark lists a size of `enwik8` for [[2]](#references), too
 slow to run here: their sizes are exact, their times the benchmark's,
@@ -701,6 +707,8 @@ measured on other machines.
 | cmix v21 † | 14,623,723 | 622,949 | 638,442 |
 | nncp v3.2 † | 14,915,298 | 241,871 | 238,670 |
 | paq8px_v206fix1 † | 15,849,084 | 291,916 | 294,847 |
+| **cpress `words4`** | **17,880,631** | **644.2** | **826.2** |
+| **cpress `words3`** | **18,033,918** | **385.9** | **516.7** |
 | mcm 0.83, `-x11` | 18,234,412 | 377.1 | 373.4 |
 | **cpress `words2`** | **18,838,765** | **337.2** | **457.9** |
 | **cpress `words`** | **18,846,644** | **374.1** | **475.9** |
@@ -719,10 +727,12 @@ measured on other machines.
 
 What the figure says:
 
-- **mcm 0.83 is the smallest program measured here, and `words2` the
-  next.** mcm is 3.2% smaller, 12% slower compressing and 18% faster
-  decompressing. Both are context mixers, and both build a dictionary of
-  words from their input (section 6).
+- **`words4` is the smallest program measured here, then `words3` and
+  mcm 0.83.** `words4` is 1.9% smaller than mcm and takes 1.7 times as
+  long compressing and 2.2 times decompressing; `words3`, 1.1% smaller,
+  about as long compressing and 1.4 times decompressing. Both are context
+  mixers, and both build a dictionary of words from their input
+  (section 6).
 - **`mix9` is faster than lpaq1,** the program its design follows, on this
   machine: it takes a third less time compressing and a fifth less
   decompressing. That is
@@ -776,6 +786,16 @@ compressing, and 22% slower decompressing. For decompression, mcm is the
 one smaller program in the table that is also faster. mcm too builds a
 dictionary from its input, and stage 8 took its shortcuts; what else
 separates the two is in issue #4.
+
+Stages 9 and 10 passed it, and the program above it. `words3`, codec 7,
+makes 144,613,104 bytes, 144,734,323 in all, under mcm's 144,934,149.
+`words4`, codec 8, makes **143,070,644 bytes, 1.145 bits a byte**, at 545
+ns a byte compressing and 621 decompressing, and **143,193,451** in all:
+under drt|lpaq9m's 144,054,338, which would place it 38th. Every program
+smaller than `words4` in the table is at least 2.3 times slower each way,
+so it would be on both time frontiers. It would be on no memory
+frontier: smaller programs run in 1.6 GB, and compressing `enwik9`
+`words4` peaks at 7.0 GiB (appendix, stage 10; stage 10's brief).
 
 Measured here, lpaq1 and xz make the benchmark's sizes to the byte, and
 bzip2 the size of its row for version 1.0.3. gzip's differs by one byte,
@@ -1424,6 +1444,8 @@ Against `words3`'s record, `enwik9` compresses 58% and decompresses 52%
 more slowly; against drt|lpaq9m's listed times, 868 and 898, it is 37% and
 31% faster. The prototype, which did not prefetch the new mixers' weights
 or the third APM's curve, took 658.7 and 757.3 on the same file.
+The same day under WSL 2 with GCC 13.3, `enwik8` the same way: 644.2
+and 826.2 ns a byte.
 
 Codecs 3, 5, 6 and 7 are no slower than at `v1.3`: on the 30 MB slice,
 the fastest of three runs each way, interleaved with `v1.3`'s build:
@@ -1437,7 +1459,9 @@ the fastest of three runs each way, interleaved with `v1.3`'s build:
 
 The decompressor for the benchmark, `include/` and `src/` at `0bcbe83`
 with the note of the one-line build, zipped at deflate level 9, is
-122,807 bytes. In all, 143,193,451 bytes: 860,887 (0.60%) under
+122,807 bytes. Built from those files by the note's line for GCC 13.3, it
+restores `enwik9` from its `words4` archive exactly. In all, 143,193,451
+bytes: 860,887 (0.60%) under
 drt|lpaq9m's 144,054,338, which would place cpress 38th.
 
 ## References
